@@ -18,9 +18,7 @@ urlpatterns = [
     path("profiles/", ProfileDetailAPIView.as_view(), name="my-profile"),
     path("profiles/<str:uuid>/", ProfileDetailAPIView.as_view(), name="profile-detail"),
 
-    # Djoser authentication routes
-    path("auth/", include("djoser.urls")),
-    path("auth/", include("djoser.urls.jwt")),
+    
 ]
 
 
