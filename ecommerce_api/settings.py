@@ -94,6 +94,16 @@ DATABASES = {
     }
 }
 
+# EMAIL CONFIGURATION (Mailtrap for development)
+EMAIL_BACKEND = config("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = config("EMAIL_HOST", "sandbox.smtp.mailtrap.io")
+EMAIL_PORT = int(config("EMAIL_PORT", 587))
+EMAIL_USE_TLS = config("EMAIL_USE_TLS", "True") == "True"
+EMAIL_HOST_USER = config("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
+DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", "noreply@shopping.com")
+
+
 CELERY_BROKER_URL = config("CELERY_BROKER_URL")
 CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND")
 # Password validation
@@ -114,13 +124,19 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+
+# DJOSER CONFIGURATION
+
 DJOSER = {
+    "LOGIN_FIELD": "email",
     "USER_CREATE_PASSWORD_RETYPE": True,
+    "SEND_ACTIVATION_EMAIL": True,   #  Enable activation email after registration
+    "ACTIVATION_URL": "auth/activate/{uid}/{token}",  # frontend or API URL pattern
     "SERIALIZERS": {
-        "user_create": "users.serializers.CustomUserCreateSerializer",
+        "user_create": "users.serializers.CustomUserCreateSerializer",  
         "user": "users.serializers.CustomUserCreateSerializer",
         "current_user": "users.serializers.CustomUserCreateSerializer",
-    }
+    },
 }
 
 SIMPLE_JWT = {
@@ -143,6 +159,11 @@ SWAGGER_SETTINGS = {
         "Bearer": {"type": "apiKey", "name": "Authorization", "in": "header"}
     }
 }
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://127.0.0.1:8001",
+    "http://localhost:8001",
+]
 
 
 # Internationalization
