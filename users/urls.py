@@ -1,15 +1,27 @@
 from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from .views import UserViewSet, ProfileViewSet
-
-router = DefaultRouter()
-router.register(r'users', UserViewSet, basename='user')
-router.register(r'profiles', ProfileViewSet, basename='profile')
+from .views import (
+    UserListCreateAPIView,
+    UserDetailAPIView,
+    MeAPIView,
+    ProfileDetailAPIView,
+)
 
 urlpatterns = [
-    path('', include(router.urls)),
+    # User management
+    path("users/", UserListCreateAPIView.as_view(), name="user-list-create"),
+    path("users/<str:pk>/", UserDetailAPIView.as_view(), name="user-detail"),
 
-    # Include Djoser routes for registration & JWT login
-    path('auth/', include('djoser.urls')),
-    path('auth/', include('djoser.urls.jwt')),
+    # Current authenticated user
+    path("users/me/", MeAPIView.as_view(), name="me"),
+
+    # Profile management
+    path("profiles/", ProfileDetailAPIView.as_view(), name="my-profile"),
+    path("profiles/<str:uuid>/", ProfileDetailAPIView.as_view(), name="profile-detail"),
+
+    # Djoser authentication routes
+    path("auth/", include("djoser.urls")),
+    path("auth/", include("djoser.urls.jwt")),
 ]
+
+
+
