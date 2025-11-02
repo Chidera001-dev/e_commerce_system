@@ -126,18 +126,27 @@ AUTH_PASSWORD_VALIDATORS = [
 
 
 # DJOSER CONFIGURATION
-
 DJOSER = {
     "LOGIN_FIELD": "email",
     "USER_CREATE_PASSWORD_RETYPE": True,
-    "SEND_ACTIVATION_EMAIL": True,   #  Enable activation email after registration
-    "ACTIVATION_URL": "auth/activate/{uid}/{token}",  # frontend or API URL pattern
+
+    # --- EMAIL ACTIVATION ---
+    "SEND_ACTIVATION_EMAIL": True,
+    "ACTIVATION_URL": "auth/activate/{uid}/{token}",
+
+    # --- PASSWORD RESET ---
+    "SEND_CONFIRMATION_EMAIL": True,  # Sends email after successful reset
+    "PASSWORD_RESET_CONFIRM_URL": "auth/password/reset/confirm/{uid}/{token}",
+    "PASSWORD_CHANGED_EMAIL_CONFIRMATION": True,  # Notify user password changed
+
+    # --- SERIALIZERS ---
     "SERIALIZERS": {
-        "user_create": "users.serializers.CustomUserCreateSerializer",  
+        "user_create": "users.serializers.CustomUserCreateSerializer",
         "user": "users.serializers.CustomUserCreateSerializer",
         "current_user": "users.serializers.CustomUserCreateSerializer",
     },
 }
+
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
