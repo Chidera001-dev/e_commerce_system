@@ -54,7 +54,7 @@ class UserDetailAPIView(APIView):
         return get_object_or_404(User, pk=pk)
 
     @swagger_auto_schema(
-        operation_summary="Get user details (Admin or Owner)",
+        operation_summary="Get user details (Admin only)",
         operation_description="Retrieve details of a specific user using their UUID.",
         responses={200: CustomUserCreateSerializer},
     )
@@ -65,7 +65,7 @@ class UserDetailAPIView(APIView):
         return Response(serializer.data)
 
     @swagger_auto_schema(
-        operation_summary="Update user details (Admin or Owner)",
+        operation_summary="Update user details (Admin only)",
         operation_description="Partially update user details using UUID.",
         request_body=CustomUserCreateSerializer,
         responses={200: CustomUserCreateSerializer},
@@ -80,7 +80,7 @@ class UserDetailAPIView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
-        operation_summary="Delete user (Admin or Owner)",
+        operation_summary="Delete user (Admin only)",
         operation_description="Allows admin or the user to delete the user account.",
         responses={204: "User deleted successfully"},
     )
@@ -100,21 +100,20 @@ class MeAPIView(APIView):
     @swagger_auto_schema(
         operation_summary="Get current user details",
         operation_description="Returns the authenticated user's information.",
-        responses={200: CustomUserCreateSerializer},
+        responses={200: CustomUserUpdateSerializer},
     )
     def get(self, request):
-        serializer = CustomUserCreateSerializer(request.user)
+        serializer = CustomUserUpdateSerializer(request.user)
         return Response(serializer.data)
 
     @swagger_auto_schema(
         operation_summary="Update current user details",
         operation_description="Allows the authenticated user to partially update their own data.",
-        request_body=CustomUserCreateSerializer,
-        responses={200: CustomUserCreateSerializer},
+        request_body=CustomUserUpdateSerializer,
+        responses={200: CustomUserUpdateSerializer},
     )
     def patch(self, request):
         serializer = CustomUserUpdateSerializer(request.user, data=request.data, partial=True)
-
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
@@ -128,6 +127,7 @@ class MeAPIView(APIView):
     def delete(self, request):
         request.user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 
 # ------------------ PROFILE VIEWS ------------------
