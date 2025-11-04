@@ -3,10 +3,10 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
-
 from .models import User, Profile
-from .serializers import CustomUserCreateSerializer, ProfileSerializer
-from .permissions import IsOwnerOrAdmin , IsAdminUser, IsAuthenticatedUser
+from rest_framework import permissions
+from .serializers import CustomUserCreateSerializer, ProfileSerializer,CustomUserUpdateSerializer
+from .permissions import IsOwnerOrAdmin , IsAdminUser 
 
 
 # ------------------ USER VIEWS ------------------
@@ -16,7 +16,8 @@ class UserListCreateAPIView(APIView):
     Admin can list all users or create a new one.
     Normal users cannot access this endpoint.
     """
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminUser]
+
 
     @swagger_auto_schema(
         operation_summary="List all users (Admin only)",
@@ -47,7 +48,7 @@ class UserDetailAPIView(APIView):
     Retrieve, update, or delete a specific user.
     Only the user themselves or an admin can access this endpoint.
     """
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminUser]
 
     def get_object(self, pk):
         return get_object_or_404(User, pk=pk)
@@ -112,7 +113,8 @@ class MeAPIView(APIView):
         responses={200: CustomUserCreateSerializer},
     )
     def patch(self, request):
-        serializer = CustomUserCreateSerializer(request.user, data=request.data, partial=True)
+        serializer = CustomUserUpdateSerializer(request.user, data=request.data, partial=True)
+
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)

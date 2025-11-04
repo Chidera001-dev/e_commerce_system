@@ -43,12 +43,5 @@ class IsAdminUser(permissions.BasePermission):
         return bool(request.user and request.user.is_staff)
 
 
-class IsAuthenticatedUser(permissions.BasePermission):
-    """
-    Simple permission for authenticated users only.
-    Used for /users/me/ endpoints.
-    """
 
-    def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated)
 

@@ -16,6 +16,13 @@ class CustomUserCreateSerializer(UserCreateSerializer):
         # Create user with default behavior
         user = super().create(validated_data)
         return user
+    
+# For viewing or updating user info (used in /users/me/)
+class CustomUserUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ('id', 'email', 'username', 'phone_number')
+        read_only_fields = ('id', 'email')  # email can't be changed 
 
 
 # Profile serializer for profile update
