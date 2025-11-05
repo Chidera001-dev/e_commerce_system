@@ -19,8 +19,8 @@ urlpatterns = [
     path("users/<str:pk>/", UserDetailAPIView.as_view(), name="user-detail"),
 
     # Authenticated user: Get, update, or delete *their own* account
-    # GET/PATCH/DELETE → /users/me/
-    path("users/me/", MeAPIView.as_view(), name="me"),
+    # GET/PATCH/DELETE → /account/me/
+    path("account/me/", MeAPIView.as_view(), name="me"),
 
     # ---------------- PROFILE ROUTES ----------------
     
