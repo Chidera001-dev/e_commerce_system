@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
 from .models import User, Profile
+from rest_framework.exceptions import PermissionDenied
 from rest_framework import permissions
 from .serializers import CustomUserCreateSerializer, ProfileSerializer,CustomUserUpdateSerializer
 from .permissions import IsOwnerOrAdmin , IsAdminUser 
@@ -134,19 +135,29 @@ class MeAPIView(APIView):
 
 class ProfileDetailAPIView(APIView):
     """
-    - Admin can view or update any profile.
-    - Normal users can only view or update their own profile.
+    - Admin can view or update any profile (using /profiles/<uuid>/)
+    - Normal users can only view or update their own profile (using /profiles/)
     """
     permission_classes = [IsOwnerOrAdmin]
 
     def get_object(self, request, uuid=None):
-        if request.user.is_staff and uuid:
+        # If UUID is provided, only admin can use it
+        if uuid:
+            if not request.user.is_staff:
+                raise PermissionDenied("You do not have permission to access other users' profiles.")
             return get_object_or_404(Profile, pk=uuid)
+        
+        # Normal user: access their own profile
         return get_object_or_404(Profile, user=request.user)
 
+    #  Swagger documentation for GET
     @swagger_auto_schema(
         operation_summary="Get profile details",
-        operation_description="Retrieve a user's profile. Admins can access any profile; normal users can only access their own.",
+        operation_description=(
+            "Retrieve a user's profile.\n\n"
+            "- Normal users: `/profiles/` → Get your own profile\n"
+            "- Admins: `/profiles/<uuid>/` → Get any user's profile"
+        ),
         responses={200: ProfileSerializer},
     )
     def get(self, request, uuid=None):
@@ -155,9 +166,14 @@ class ProfileDetailAPIView(APIView):
         serializer = ProfileSerializer(profile)
         return Response(serializer.data)
 
+    #  Swagger documentation for PATCH
     @swagger_auto_schema(
         operation_summary="Update profile (Admin or Owner)",
-        operation_description="Allows a user to update their profile or an admin to update any profile.",
+        operation_description=(
+            "Update profile details.\n\n"
+            "- Normal users: `/profiles/` → Update your own profile\n"
+            "- Admins: `/profiles/<uuid>/` → Update any user's profile"
+        ),
         request_body=ProfileSerializer,
         responses={200: ProfileSerializer},
     )
