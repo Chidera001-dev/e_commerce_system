@@ -145,7 +145,7 @@ class ProfileDetailAPIView(APIView):
         if uuid:
             if not request.user.is_staff:
                 raise PermissionDenied("You do not have permission to access other users' profiles.")
-            return get_object_or_404(Profile, pk=uuid)
+            return get_object_or_404(Profile, user__id=uuid)
         
         # Normal user: access their own profile
         return get_object_or_404(Profile, user=request.user)
