@@ -13,11 +13,13 @@ class ProductSerializer(serializers.ModelSerializer):
     category_id = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all(), source="category", write_only=True
     )
+    slug = serializers.ReadOnlyField()  # slug as read-only
 
     class Meta:
         model = Product
         fields = [
-            "id", "owner", "category", "category_id", "name",
-            "description", "price", "stock", "image", "is_active",
-            "created_at", "updated_at"
+            "id", "owner", "category", "category_id", "slug", 
+            "name", "description", "price", "stock", "image",
+            "is_active", "created_at", "updated_at"
         ]
+    read_only_fields = ["id", "owner", "slug", "created_at", "updated_at"]
