@@ -1,5 +1,5 @@
-from rest_framework import status, permissions, filters
-from rest_framework.views import APIView
+from rest_framework import status, permissions, filters, generics
+from rest_framework.views import APIView 
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
@@ -126,16 +126,24 @@ class CategoryDetailAPIView(APIView):
 
 # ---------------------- PRODUCT VIEWS ----------------------
 
-class PublicProductListAPIView(APIView):
+class PublicProductListAPIView(generics.ListAPIView):
     """
-    Public: list active products with filters/search
+    Public endpoint:
+    List all active products with filter, search, and ordering support.
+    Example:
+        /api/public/products/?category=clothing
+        /api/public/products/?search=iphone
+        /api/public/products/?ordering=-price
     """
+    queryset = Product.objects.filter(is_active=True)
+    serializer_class = ProductSerializer
     permission_classes = [permissions.AllowAny]
-    pagination_class = LimitOffsetPagination
+
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = ProductFilter
     search_fields = ['name', 'description']
     ordering_fields = ['price', 'created_at']
+    pagination_class = LimitOffsetPagination
 
     @swagger_auto_schema(
         operation_summary="List products (public)",
