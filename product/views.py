@@ -93,6 +93,7 @@ class CategoryDetailAPIView(APIView):
     )
     def get(self, request, id):
         category = self.get_object(id)
+        self.check_object_permissions(request, category)
         serializer = CategorySerializer(category)
         return Response(serializer.data)
 
@@ -104,6 +105,7 @@ class CategoryDetailAPIView(APIView):
     )
     def patch(self, request, id):
         category = self.get_object(id)
+        self.check_object_permissions(request, category)
         serializer = CategorySerializer(category, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -117,6 +119,7 @@ class CategoryDetailAPIView(APIView):
     )
     def delete(self, request, id):
         category = self.get_object(id)
+        self.check_object_permissions(request, category)
         category.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -208,6 +211,7 @@ class ProductDetailAPIView(APIView):
     )
     def get(self, request, id):
         product = self.get_object(id)
+        self.check_object_permissions(request, product)
         serializer = ProductSerializer(product)
         return Response(serializer.data)
 
@@ -219,6 +223,7 @@ class ProductDetailAPIView(APIView):
     )
     def patch(self, request, id):
         product = self.get_object(id)
+        self.check_object_permissions(request, product)
         serializer = ProductSerializer(product, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -232,6 +237,7 @@ class ProductDetailAPIView(APIView):
     )
     def delete(self, request, id):
         product = self.get_object(id)
+        self.check_object_permissions(request, product)
         product.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
