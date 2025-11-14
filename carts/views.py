@@ -8,13 +8,13 @@ from drf_yasg.utils import swagger_auto_schema
 from .models import Cart, CartItem
 from product.models import Product
 from .serializers import CartSerializer
-from .permissions import IsAuthenticatedOrGuest
+from .permissions import CartPermission
 from .redis_cart import get_cart, save_cart, clear_cart
 from .celery_tasks import checkout_cart
 
 
 class CartViewSet(viewsets.ViewSet):
-    permission_classes = [IsAuthenticatedOrGuest]
+    permission_classes = [CartPermission]
 
     # ------------------- GET CART -------------------
     @swagger_auto_schema(
