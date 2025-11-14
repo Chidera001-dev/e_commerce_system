@@ -135,7 +135,7 @@ class PublicProductListAPIView(generics.ListAPIView):
         /api/public/products/?search=iphone
         /api/public/products/?ordering=-price
     """
-    queryset = Product.objects.filter(is_active=True)
+    
     serializer_class = ProductSerializer
     permission_classes = [permissions.AllowAny]
 
@@ -145,15 +145,16 @@ class PublicProductListAPIView(generics.ListAPIView):
     ordering_fields = ['price', 'created_at']
     pagination_class = LimitOffsetPagination
 
+    def get_queryset(self):
+        return Product.objects.filter(is_active=True)
+
     @swagger_auto_schema(
         operation_summary="List products (public)",
         operation_description="Anyone can view available products.",
         responses={200: ProductSerializer(many=True)},
     )
-    def get(self, request):
-        products = Product.objects.filter(is_active=True).order_by('-created_at')
-        serializer = ProductSerializer(products, many=True)
-        return Response(serializer.data)
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class PublicProductDetailAPIView(APIView):
