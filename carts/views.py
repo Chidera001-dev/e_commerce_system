@@ -10,7 +10,7 @@ from product.models import Product
 from .serializers import CartSerializer
 from .permissions import IsAuthenticatedOrGuest
 from .redis_cart import get_cart, save_cart, clear_cart
-from .tasks import checkout_cart
+from .celery_tasks import checkout_cart
 
 
 class CartViewSet(viewsets.ViewSet):
