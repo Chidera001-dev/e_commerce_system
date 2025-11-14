@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     "users.apps.UsersConfig",
     "product.apps.ProductConfig",
+    "carts.apps.CartsConfig",
     
 
     # third party apps
@@ -50,6 +51,7 @@ INSTALLED_APPS = [
     "drf_yasg",
     "djoser",
     "jazzmin",
+    
 ]
 
 MIDDLEWARE = [
