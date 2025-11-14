@@ -1,11 +1,18 @@
 from django.db import models
-from django.db import models
+import shortuuid
 from django.conf import settings
 from product.models import Product
 
 User = settings.AUTH_USER_MODEL
 
 class Cart(models.Model):
+    id = models.CharField(
+        primary_key=True,
+        max_length=22,
+        default=shortuuid.uuid,
+        editable=False,
+        unique=True,
+    )
     user = models.ForeignKey(User, null=True, blank=True, on_delete=models.CASCADE)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -20,6 +27,13 @@ class Cart(models.Model):
 
 
 class CartItem(models.Model):
+    id = models.CharField(
+        primary_key=True,
+        max_length=22,
+        default=shortuuid.uuid,
+        editable=False,
+        unique=True,
+    )
     cart = models.ForeignKey(Cart, related_name="items", on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(default=1)
@@ -32,6 +46,7 @@ class CartItem(models.Model):
 
     class Meta:
         unique_together = ("cart", "product")
+        ordering = ['-added_at']
 
 
 # Create your models here.
