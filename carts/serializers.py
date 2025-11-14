@@ -28,7 +28,7 @@ class CartSerializer(serializers.ModelSerializer):
 
 
 class AddCartItemSerializer(serializers.Serializer):
-    product_id = serializers.IntegerField()
+    product_id = serializers.CharField()
     quantity = serializers.IntegerField(min_value=1, default=1)
 
     def validate_product_id(self, value):
