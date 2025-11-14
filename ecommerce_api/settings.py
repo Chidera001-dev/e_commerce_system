@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     # third party apps
     "rest_framework",
     "django_filters",
+    "django.contrib.sessions",
     "rest_framework_simplejwt.token_blacklist",
     "drf_yasg",
     "djoser",
@@ -110,6 +111,20 @@ EMAIL_USE_TLS = config("EMAIL_USE_TLS", "True") == "True"
 EMAIL_HOST_USER = config("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", "noreply@shopping.com")
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": config("REDIS_URL"),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
+
+# Use Redis for session storage
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+SESSION_CACHE_ALIAS = "default"
 
 
 CELERY_BROKER_URL = config("CELERY_BROKER_URL")
