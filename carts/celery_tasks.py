@@ -6,6 +6,7 @@ from .redis_cart import clear_cart
 
 @shared_task
 def checkout_cart(cart_id, user_email=None, user_id=None):
+    
     """
     Checkout task that:
     1. Marks the cart as inactive in DB
@@ -33,3 +34,5 @@ def checkout_cart(cart_id, user_email=None, user_id=None):
             recipient_list=[user_email],
             fail_silently=False
         )
+
+
