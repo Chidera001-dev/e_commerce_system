@@ -27,6 +27,7 @@ urlpatterns = [
     #  Your custom user/profile API routes
     path("api/", include("users.urls")),
     path("api/", include("product.urls")),
+    path("api/", include("carts.urls")),
 
     # Swagger docs
     path("swagger/", schema_view.with_ui("swagger", cache_timeout=0), name="schema-swagger-ui"),
