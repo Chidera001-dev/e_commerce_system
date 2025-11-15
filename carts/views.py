@@ -4,6 +4,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
+from rest_framework.decorators import action
 
 from .models import Cart, CartItem
 from product.models import Product
@@ -34,8 +35,9 @@ class CartViewSet(viewsets.ViewSet):
         operation_description="Add a product to the cart (supports both authenticated and guest users).",
         responses={200: "Item added to cart"}
     )
+    @action(detail=False, methods=["post"])
     def add_item(self, request):
-        product_id = int(request.data.get("product_id"))
+        product_id = product_id = request.data.get("product_id")
         quantity = int(request.data.get("quantity", 1))
         product = get_object_or_404(Product, id=product_id)
 
@@ -92,6 +94,7 @@ class CartViewSet(viewsets.ViewSet):
         operation_description="Merge a guest cart into an authenticated user cart after login.",
         responses={200: "Cart merged successfully"}
     )
+    @action(detail=False, methods=["post"])
     def merge_cart(self, request):
         if not request.user.is_authenticated:
             return Response({"error": "Not logged in"}, status=400)
@@ -103,7 +106,7 @@ class CartViewSet(viewsets.ViewSet):
 
         cart, _ = Cart.objects.get_or_create(user=request.user, is_active=True)
         for product_id_str, item in redis_cart.items():
-            product_id = int(product_id_str)
+            product_id = product_id_str 
             product = get_object_or_404(Product, id=product_id)
 
             cart_item, created = CartItem.objects.get_or_create(
@@ -133,37 +136,26 @@ class CartViewSet(viewsets.ViewSet):
     # ------------------- CHECKOUT -------------------
     @swagger_auto_schema(
         operation_summary="Checkout",
-        operation_description="Checkout cart for authenticated or guest users. Guest must provide an email.",
+        operation_description="Checkout cart for authenticated users. Guest must register or login first.",
         responses={200: "Checkout initiated"}
     )
+    @action(detail=False, methods=["post"])
     def checkout(self, request):
-        if request.user.is_authenticated:
-            cart = Cart.objects.filter(user=request.user, is_active=True).first()
-            if not cart:
-                return Response({"error": "No active cart"}, status=400)
+        if not request.user.is_authenticated:
+            return Response(
+                {"error": "You must be logged in to checkout. Please sign up or log in."},
+                status=401
+            )
 
-            checkout_cart.delay(cart.id, user_email=request.user.email, user_id=request.user.id)
+    # Authenticated user checkout
+        cart = Cart.objects.filter(user=request.user, is_active=True).first()
+        if not cart:
+            return Response({"error": "No active cart"}, status=400)
 
-        else:
-            session_key = request.session.session_key
-            cart_data = get_cart(session_key)
-            if not cart_data:
-                return Response({"error": "No cart found"}, status=400)
-
-            temp_cart = Cart.objects.create(is_active=False)
-            for product_id_str, item in cart_data.items():
-                product = get_object_or_404(Product, id=int(product_id_str))
-                CartItem.objects.create(
-                    cart=temp_cart,
-                    product=product,
-                    quantity=item["quantity"],
-                    price_snapshot=item["price_snapshot"]
-                )
-
-            checkout_cart.delay(temp_cart.id, user_email=request.data.get("email"))
-            clear_cart(session_key)
+        checkout_cart.delay(cart.id, user_email=request.user.email, user_id=request.user.id)
 
         return Response({"message": "Checkout initiated"}, status=200)
+
 
     # ------------------- HELPER -------------------
     def get_cart(self, request):
