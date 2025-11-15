@@ -2,14 +2,17 @@ from rest_framework.permissions import BasePermission
 
 class CartPermission(BasePermission):
     """
-    Allow all users (guest or authenticated) to:
-    - view cart
-    - add items
-    - merge cart
-    - checkout
+    Permissions for cart operations.
+
+    Allows:
+    - Guests and authenticated users to view their cart
+    - Add items to the cart
+    - Merge guest cart into user cart
+    - Checkout (requires login if needed)
     """
 
     def has_permission(self, request, view):
-        # All actions are allowed for everyone
+        # Allow everyone to access cart endpoints
         return True
+
 
