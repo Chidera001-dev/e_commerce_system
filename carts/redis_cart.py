@@ -7,28 +7,51 @@ REDIS_DB = 0
 
 r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
 
-def get_cart(session_or_user_key, ttl=86400):
+def get_cart(key, ttl=86400):
     """
-    Retrieve the cart from Redis.
-    Extend TTL each time cart is accessed to implement sliding expiration.
+    Retrieve cart from Redis.
+    'key' = session key (guest) OR user:{id} (authenticated)
+    Automatically extends TTL (sliding expiration).
     """
-    data = r.get(f"cart:{session_or_user_key}")
-    if data:
-        # Extend TTL whenever cart is accessed
-        r.expire(f"cart:{session_or_user_key}", ttl)
-        return json.loads(data)
-    return {}
+    redis_key = f"cart:{key}"
+    data = r.get(redis_key)
 
-def save_cart(session_or_user_key, cart_data, ttl=86400):
-    """
-    Save or update the cart in Redis.
-    Each save resets TTL automatically.
-    """
-    r.setex(f"cart:{session_or_user_key}", ttl, json.dumps(cart_data))
+    if not data:
+        return {}
 
-def clear_cart(session_or_user_key):
+    try:
+        cart = json.loads(data)
+    except json.JSONDecodeError:
+        # Corrupt cache → delete it and return empty cart
+        r.delete(redis_key)
+        return {}
+
+    # Sliding expiration: refresh TTL on access
+    r.expire(redis_key, ttl)
+    return cart
+
+
+def save_cart(key, cart_data, ttl=86400):
     """
-    Remove the cart from Redis.
+    Save the cart back to Redis.
+    Overwrites existing cart.
     """
-    r.delete(f"cart:{session_or_user_key}")
+    redis_key = f"cart:{key}"
+    try:
+        r.setex(redis_key, ttl, json.dumps(cart_data))
+    except TypeError:
+        """
+        If someone accidentally passes a non-serializable value,
+        fail silently and ensure app doesn't crash.
+        """
+        r.delete(redis_key)
+
+
+def clear_cart(key):
+    """
+    Remove the cart completely from Redis.
+    """
+    redis_key = f"cart:{key}"
+    r.delete(redis_key)
+
 
