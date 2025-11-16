@@ -37,56 +37,56 @@ class CartViewSet(viewsets.ViewSet):
     )
     @action(detail=False, methods=["post"])
     def add_item(self, request):
-        product_id = product_id = request.data.get("product_id")
+        product_id = request.data.get("product_id")
         quantity = int(request.data.get("quantity", 1))
         product = get_object_or_404(Product, id=product_id)
 
         if product.stock < quantity:
-            return Response({"error": "Not enough stock"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Not enough stock"}, status=400)
 
         cart, source = self.get_cart(request)
 
+    # AUTHENTICATED USER
         if request.user.is_authenticated:
             user_key = f"user:{request.user.id}"
 
-            # Update Redis
-            if str(product_id) in cart:
-                cart[str(product_id)]["quantity"] += quantity
-            else:
-                cart[str(product_id)] = {
-                    "quantity": quantity,
-                    "price_snapshot": float(product.price),
-                    "subtotal": float(product.price * quantity)
-                }
-            cart[str(product_id)]["subtotal"] = cart[str(product_id)]["quantity"] * cart[str(product_id)]["price_snapshot"]
+       
+        # Do NOT add quantities twice. Replace or set.
+            cart[str(product_id)] = {
+                "quantity": quantity,
+                "price_snapshot": float(product.price),
+                "subtotal": float(product.price * quantity)
+            }
             save_cart(user_key, cart)
 
-            # Update DB
+        # --- UPDATE DATABASE CORRECTLY ---
             db_cart, _ = Cart.objects.get_or_create(user=request.user, is_active=True)
             item, created = CartItem.objects.get_or_create(
                 cart=db_cart,
                 product=product,
                 defaults={"quantity": quantity, "price_snapshot": product.price}
             )
+
+        # Replace quantity instead of +=
             if not created:
-                item.quantity += quantity
+                item.quantity = quantity
+                item.price_snapshot = product.price
                 item.save()
 
         else:
-            # Anonymous users
+            # GUEST USER
             items = cart["items"]
-            if str(product_id) in items:
-                items[str(product_id)]["quantity"] += quantity
-            else:
-                items[str(product_id)] = {
-                    "quantity": quantity,
-                    "price_snapshot": float(product.price),
-                    "subtotal": float(product.price * quantity)
-                }
-            items[str(product_id)]["subtotal"] = items[str(product_id)]["quantity"] * items[str(product_id)]["price_snapshot"]
+            items[str(product_id)] = {
+                "quantity": quantity,
+                "price_snapshot": float(product.price),
+             "subtotal": float(product.price * quantity)
+            }
+
             save_cart(cart["session_key"], items)
 
         return self.list(request)
+
+  
 
     # ------------------- MERGE CART -------------------
     @swagger_auto_schema(
@@ -101,24 +101,31 @@ class CartViewSet(viewsets.ViewSet):
 
         session_key = request.session.session_key
         redis_cart = get_cart(session_key)
+
         if not redis_cart:
             return Response({"message": "No anonymous cart to merge"})
 
         cart, _ = Cart.objects.get_or_create(user=request.user, is_active=True)
+
+    
         for product_id_str, item in redis_cart.items():
-            product_id = product_id_str 
-            product = get_object_or_404(Product, id=product_id)
+            product = get_object_or_404(Product, id=product_id_str)
 
             cart_item, created = CartItem.objects.get_or_create(
                 cart=cart,
                 product=product,
-                defaults={"quantity": item["quantity"], "price_snapshot": item["price_snapshot"]}
+                defaults={
+                    "quantity": item["quantity"],
+                    "price_snapshot": item["price_snapshot"]
+                }
             )
+
             if not created:
-                cart_item.quantity += item["quantity"]
+                cart_item.quantity = item["quantity"]   
+                cart_item.price_snapshot = item["price_snapshot"]
                 cart_item.save()
 
-        # Update Redis
+        # ---- SYNC REDIS WITH DATABASE ----
         user_key = f"user:{request.user.id}"
         db_cart_data = {
             str(i.product.id): {
@@ -128,10 +135,12 @@ class CartViewSet(viewsets.ViewSet):
             }
             for i in cart.items.all()
         }
-        save_cart(user_key, db_cart_data)
+
+        (user_key, db_cart_data)
 
         clear_cart(session_key)
         return Response({"message": "Cart merged successfully"})
+
 
     # ------------------- CHECKOUT -------------------
     @swagger_auto_schema(
@@ -147,17 +156,47 @@ class CartViewSet(viewsets.ViewSet):
                 status=401
             )
 
-    # Authenticated user checkout
-        cart = Cart.objects.filter(user=request.user, is_active=True).first()
-        if not cart:
-            return Response({"error": "No active cart"}, status=400)
+        user = request.user
+        user_key = f"user:{user.id}"
 
-        checkout_cart.delay(cart.id, user_email=request.user.email, user_id=request.user.id)
+    #  Get Redis cart
+        cached_cart = get_cart(user_key)
+
+    #  Merge Redis → DB
+        cart, _ = Cart.objects.get_or_create(user=user, is_active=True)
+
+        if cached_cart:
+            for product_id_str, item in cached_cart.items():
+                product = get_object_or_404(Product, id=product_id_str)
+
+                cart_item, created = CartItem.objects.get_or_create(
+                    cart=cart,
+                    product=product,
+                    defaults={
+                        "quantity": item["quantity"],
+                        "price_snapshot": item["price_snapshot"]
+                    }
+                )
+
+                if not created:
+                    cart_item.quantity = item["quantity"]    
+                    cart_item.price_snapshot = item["price_snapshot"]
+                    cart_item.save()
+
+
+        # Clear Redis after merge
+            clear_cart(user_key)
+
+    #  If cart still empty, stop checkout
+        if not cart.items.exists():
+            return Response({"error": "Your cart is empty"}, status=400)
+
+    #  Run Celery checkout task
+        checkout_cart.delay(cart.id, user_email=user.email, user_id=user.id)
 
         return Response({"message": "Checkout initiated"}, status=200)
-
-
-    # ------------------- HELPER -------------------
+    
+     # ------------------- HELPER -------------------
     def get_cart(self, request):
         if request.user.is_authenticated:
             user_key = f"user:{request.user.id}"
@@ -181,6 +220,3 @@ class CartViewSet(viewsets.ViewSet):
             cart_data = get_cart(session_key)
             return {"session_key": session_key, "items": cart_data}, "redis"
 
-
-
-# Create your views here.
