@@ -1,67 +1,45 @@
 from celery import shared_task
 from django.core.mail import send_mail
-from django.shortcuts import get_object_or_404
-from django.core.cache import cache
-from .models import Cart
-from product.models import Product
+from .models import Cart, CartItem
 from .redis_cart import clear_cart
-
+from django.db import transaction
 
 @shared_task
-def checkout_cart(cart_id, user_email=None, user_id=None):
+def checkout_cart_task(cart_id, redis_key=None, user_email=None, user_id=None):
     """
-    Checkout task:
+    Celery task to handle checkout:
     - Reduce product stock
     - Mark cart inactive
-    - Clear Redis
-    - Send receipt email
+    - Clear Redis cart
+    - Send confirmation email
     """
+    try:
+        cart = Cart.objects.get(id=cart_id, is_active=True)
+    except Cart.DoesNotExist:
+        return "Cart does not exist"
 
-    cart = get_object_or_404(Cart, id=cart_id)
-    items = cart.items.all()
+    with transaction.atomic():
+        # Reduce stock
+        for item in cart.items.select_related('product'):
+            product = item.product
+            if product.stock < item.quantity:
+                raise Exception(f"Not enough stock for {product.name}")
+            product.stock -= item.quantity
+            product.save()
 
-    #  Reduce product stock
-    for item in items:
-        product = item.product
+        # Mark cart inactive
+        cart.is_active = False
+        cart.save()
 
-        # Reduce stock safely
-        product.stock = max(product.stock - item.quantity, 0)
-        product.save()
+        # Clear Redis cart
+        if redis_key:
+            clear_cart(redis_key)
 
-        # Clear product cache
-        cache.delete(f"product:{product.id}")
-
-    #  Mark cart inactive
-    cart.is_active = False
-    cart.save()
-
-    # Clear DB cart items after checkout
-    cart.items.all().delete()
-
-    #  Clear Redis cart
-    if user_id:
-        clear_cart(f"user:{user_id}")
-
-    #  Build receipt
-    total_amount = sum(item.subtotal for item in items)
-    message = f"Thank you for your order.\nTotal: ${total_amount}\n\nItems:\n"
-
-    for item in items:
-        message += f"{item.product.name} x {item.quantity} = ${item.subtotal}\n"
-
-    #  Send email
+    # Send confirmation email
     if user_email:
-        send_mail(
-            subject="Your Order Receipt",
-            message=message,
-            from_email="no-reply@shop.com",
-            recipient_list=[user_email],
-            fail_silently=False
-        )
+        subject = "Your order has been placed"
+        message = f"Hello! Your order #{cart_id} has been successfully placed."
+        send_mail(subject, message, 'no-reply@myshop.com', [user_email])
 
-    return "Checkout complete"
-
-
-
-
+    return "Checkout completed"
 
