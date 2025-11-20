@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "users.apps.UsersConfig",
     "product.apps.ProductConfig",
     "carts.apps.CartsConfig",
+    "orders.apps.OrdersConfig",
     
 
     # third party apps

@@ -1,73 +1,84 @@
 from celery import shared_task
 from django.core.mail import send_mail
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.core.cache import cache
-from django.db import transaction
 from django.core.exceptions import ValidationError
 
 from .models import Cart
 from product.models import Product
 from .redis_cart import clear_cart
+from orders.models import Order, OrderItem  # import your Order models
 
 @shared_task
 def checkout_cart(cart_id, user_email=None, user_id=None):
     """
     Checkout task:
+    - Move cart items to Order + OrderItem
     - Reduce product stock safely
-    - Fail if any product has insufficient stock
     - Mark cart inactive
     - Clear Redis cart
     - Send receipt email
     """
-
-    # Get cart and its items
     cart = get_object_or_404(Cart, id=cart_id)
-    items = cart.items.select_related("product").all()  # Avoid extra queries
+    items = cart.items.select_related("product").all()
 
-    with transaction.atomic(): 
-        # Lock each product row and check stock
+    if not items.exists():
+        raise ValidationError("Cannot checkout empty cart.")
+
+    with transaction.atomic():
+        # Lock each product row and reduce stock
         for item in items:
             product = Product.objects.select_for_update().get(id=item.product.id)
-
             if product.stock < item.quantity:
                 raise ValidationError(
-                    f"Insufficient stock for '{product.name}'. "
-                    f"Requested: {item.quantity}, Available: {product.stock}"
+                    f"Insufficient stock for {product.name}. Requested: {item.quantity}, Available: {product.stock}"
                 )
-
-            # Reduce stock
             product.stock -= item.quantity
             product.save()
-
-            # Clear Redis cache for product
             cache.delete(f"product:{product.id}")
 
-        # Mark cart inactive
+        # Create Order
+        order = Order.objects.create(
+            user=cart.user,
+            total=sum(item.subtotal for item in items),
+            status='PENDING'
+        )
+
+        # Move CartItems → OrderItems
+        order_items = [
+            OrderItem(
+                order=order,
+                product=item.product,
+                quantity=item.quantity,
+                price_snapshot=item.price_snapshot
+            )
+            for item in items
+        ]
+        OrderItem.objects.bulk_create(order_items)
+
+        # Mark cart inactive and clear items
         cart.is_active = False
         cart.save()
-
-        # Optionally clear cart items after successful checkout
         cart.items.all().delete()
 
-    # Clear Redis cart for authenticated user
-    if user_id:
-        clear_cart(f"user:{user_id}")
-
-    # Build receipt message
-    total_amount = sum(item.subtotal for item in items)
-    message = f"Thank you for your order.\nTotal: ${total_amount}\n\nItems:\n"
-    for item in items:
-        message += f" Hello! Your order {item.product.name} x {item.quantity} = ${item.subtotal}\n has been successfully placed."
+        # Clear Redis cart
+        if user_id:
+            clear_cart(f"user:{user_id}")
 
     # Send email receipt
     if user_email:
+        message = f"Thank you for your order {order.id}.\nTotal: ${order.total}\n\nItems:\n"
+        for i in order.items.all():
+            message += f"- {i.product.name} x {i.quantity} = ${i.subtotal}\n"
         send_mail(
-            subject="Your Order Receipt",
+            subject=f"Order Receipt {order.id}",
             message=message,
             from_email="no-reply@shop.com",
             recipient_list=[user_email],
             fail_silently=False
         )
 
-    return "Checkout complete"
+    return f"Checkout complete for order {order.id}"
+
 
