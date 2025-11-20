@@ -8,7 +8,8 @@ from .models import Cart, CartItem
 from product.models import Product
 from .permissions import CartPermission
 from .redis_cart import get_cart as redis_get_cart,save_cart,clear_cart,update_cart_item
-from .celery_tasks import checkout_cart
+from .celery_tasks import checkout_cart_to_order
+
 
 
 class CartViewSet(viewsets.ViewSet):
@@ -269,64 +270,19 @@ class CartViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["post"])
     def checkout(self, request):
         if not request.user.is_authenticated:
-            return Response(
-                {"error": "You must be logged in to checkout."},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+            return Response({"error": "Login required"}, status=401)
 
-        user = request.user
-        user_key = f"user:{user.id}"
-
-    # ----------------------- MERGE GUEST CART -----------------------
-        session_key = request.session.session_key
-        if session_key:
-            redis_session_cart = redis_get_cart(session_key) or {}
-
-            if redis_session_cart:
-                db_cart, _ = Cart.objects.get_or_create(user=user, is_active=True)
-
-                for pid, item in redis_session_cart.items():
-                    product = get_object_or_404(Product, id=pid)
-
-                    cart_item = CartItem.objects.filter(cart=db_cart, product=product).first()
-
-                    if cart_item:
-                        # Only increase quantity — DO NOT touch subtotal
-                        cart_item.quantity += int(item.get("quantity", 0))
-                        cart_item.price_snapshot = product.price
-                        cart_item.save()
-                    else:
-                        # Create DB item
-                        CartItem.objects.create(
-                            cart=db_cart,
-                            product=product,
-                            quantity=item.get("quantity", 1),
-                            price_snapshot=item.get("price_snapshot", product.price)
-                        )
-
-                # Sync Redis with authoritative DB
-                db_cart_data = {
-                    str(i.product.id): {
-                        "quantity": i.quantity,
-                        "price_snapshot": float(i.price_snapshot),
-                        "subtotal": float(i.subtotal)
-                    }
-                    for i in db_cart.items.all()
-                }
-                save_cart(user_key, db_cart_data)
-
-                # Clear guest cart
-                clear_cart(session_key)
-
-        # ----------------------- FETCH DB CART -----------------------
-        cart = Cart.objects.filter(user=user, is_active=True).first()
+        cart = Cart.objects.filter(user=request.user, is_active=True).first()
         if not cart or not cart.items.exists():
-            return Response({"error": "Your cart is empty"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Cart is empty"}, status=400)
 
-        # ----------------------- TRIGGER ASYNC CHECKOUT -----------------------
-        checkout_cart.delay(cart.id, user_email=user.email, user_id=user.id)
+        checkout_cart_to_order.delay(cart.id, user_email=request.user.email, user_id=request.user.id)
 
-        return Response({"message": "Checkout initiated"}, status=status.HTTP_200_OK)
+
+        return Response({
+            "message": "Checkout initiated",
+            "order_cart_id": cart.id
+        }, status=200)
 
 
     # ------------------- HELPER -------------------
