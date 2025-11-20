@@ -1,102 +1,154 @@
 from django.shortcuts import get_object_or_404
-from rest_framework.views import APIView
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework import status
 from drf_yasg.utils import swagger_auto_schema
 
 from .models import Cart, CartItem
 from product.models import Product
 from .permissions import CartPermission
-from .redis_cart import get_cart, get_cart_raw, save_cart, clear_cart
-from .celery_tasks import checkout_cart_task
+from .redis_cart import get_cart as redis_get_cart,save_cart,clear_cart,update_cart_item
+from .celery_tasks import checkout_cart
 
 
-class CartListAPIView(APIView):
-    """
-    Retrieve current cart (guest or authenticated)
-    """
-    permission_classes = []
+class CartViewSet(viewsets.ViewSet):
+    permission_classes = [CartPermission]
 
-    # ------------------- HELPER -------------------
-    def load_cart(self, request):
-        """
-        Load cart data for authenticated or guest user.
-        Returns: (cart_data, key)
-        """
-        if request.user.is_authenticated:
-            key = f"user:{request.user.id}"
-            cached_cart = get_cart(key)
-            if cached_cart:
-                return cached_cart, key
-
-            # Load from DB if not in Redis
-            db_cart, _ = Cart.objects.get_or_create(user=request.user, is_active=True)
-            cart_data = {
-                str(i.product.id): {
-                    "quantity": i.quantity,
-                    "price_snapshot": float(i.price_snapshot),
-                    "subtotal": float(i.subtotal)
-                }
-                for i in db_cart.items.all()
-            }
-            save_cart(key, cart_data)
-            return cart_data, key
-        else:
-            # Guest
-            session_key = request.session.session_key or request.session.create()
-            cart_data = get_cart(session_key) or {}
-            return cart_data, session_key
-
+    # ------------------- LIST CART -------------------
     @swagger_auto_schema(
-        operation_summary="Get cart",
-        operation_description="Retrieve current cart (guest or authenticated).",
-        responses={200: "Cart retrieved successfully"}
-    )
-    def get(self, request):
-        cart_data, _ = self.load_cart(request)
+    operation_summary="Get cart",
+    operation_description="Retrieve the current cart (guest or authenticated).",
+    responses={200: "Cart retrieved successfully"}
+)
+    # ---------------- AUTHENTICATED ----------------    
+    def list(self, request):
+        if request.user.is_authenticated:
+         key = f"user:{request.user.id}"
+    # ---------------- GUEST ----------------
+        else:
+            key = request.session.session_key
+            if not key:
+                request.session.create()
+                key = request.session.session_key
+
+        # Load cart from Redis
+        cart_data = redis_get_cart(key) or {}
+
+        # Build response
         total = sum(item.get("subtotal", 0) for item in cart_data.values())
-        return Response({"items": cart_data, "total": total}, status=status.HTTP_200_OK)
 
+        return Response({
+            "items": cart_data,
+            "total": total
+        }, status=status.HTTP_200_OK)
 
-class AddItemAPIView(APIView):
-    permission_classes = []
-
+    # ------------------- ADD ITEM -------------------
     @swagger_auto_schema(
         operation_summary="Add item to cart",
-        operation_description="Add a product to the cart. Authenticated writes DB + Redis; guest writes Redis.",
-        responses={200: "Item added", 400: "Bad request"}
+        operation_description="Add a product to the cart (supports authenticated and guest users).",
+        responses={200: "Item added to cart"}
     )
-    def post(self, request):
+    @action(detail=False, methods=["post"])
+    def add_item(self, request):
         product_id = request.data.get("product_id")
         if not product_id:
             return Response({"error": "product_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             quantity = int(request.data.get("quantity", 1))
-            if quantity <= 0:
-                raise ValueError
         except (ValueError, TypeError):
-            return Response({"error": "quantity must be a positive integer"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "quantity must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if quantity <= 0:
+            return Response({"error": "quantity must be greater than zero"}, status=status.HTTP_400_BAD_REQUEST)
 
         product = get_object_or_404(Product, id=product_id)
+
         if product.stock < quantity:
             return Response({"error": "Not enough stock"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Load cart
-        cart_data, key = CartListAPIView().load_cart(request)
+        # Load cart (guest or user)
+        cart_obj, _source = self.load_cart(request)
 
+        # ---------------- AUTHENTICATED ----------------
         if request.user.is_authenticated:
-            # DB first
+            user_key = f"user:{request.user.id}"
             db_cart, _ = Cart.objects.get_or_create(user=request.user, is_active=True)
-            cart_item, created = CartItem.objects.get_or_create(
+            item, created = CartItem.objects.get_or_create(
+                cart=db_cart,
+                product=product,
+                defaults={"quantity": quantity, "price_snapshot": product.price}
+            )
+
+            if not created:
+                # Add quantities if user adds again
+                item.quantity += quantity
+                # Always use latest product price
+                item.price_snapshot = product.price
+                item.save()
+
+            # Sync Redis with authoritative DB
+            db_cart_data = {
+                str(i.product.id): {
+                    "quantity": i.quantity,
+                    "price_snapshot": float(i.price_snapshot),
+                    "subtotal": float(i.subtotal)
+                } for i in db_cart.items.all()
+            }
+            save_cart(user_key, db_cart_data)
+
+        # ---------------- GUEST ----------------
+        else:
+            session_key = cart_obj["session_key"]
+            items = cart_obj.get("items", {}) or {}
+            pid = str(product_id)
+            if pid in items:
+                items[pid]["quantity"] += quantity
+            else:
+                items[pid] = {
+                    "quantity": quantity,
+                    "price_snapshot": float(product.price),
+                    "subtotal": 0.0
+                }
+            # Always recalc subtotal
+            items[pid]["subtotal"] = items[pid]["quantity"] * items[pid]["price_snapshot"]
+            save_cart(session_key, items)
+
+        return self.list(request)
+    
+    @swagger_auto_schema(
+    operation_summary="Update item quantity in cart",
+    operation_description="Set the quantity of a product in the cart (authenticated or guest).",
+    responses={200: "Item quantity updated"}
+)
+    @action(detail=False, methods=["post"])
+    def update_item(self, request):
+        product_id = request.data.get("product_id")
+        if not product_id:
+            return Response({"error": "product_id is required"}, status=400)
+
+        try:
+            quantity = int(request.data.get("quantity", 1))
+            if quantity <= 0:
+                return Response({"error": "Quantity must be at least 1"}, status=400)
+        except (ValueError, TypeError):
+            return Response({"error": "Quantity must be an integer"}, status=400)
+
+        product = get_object_or_404(Product, id=product_id)
+
+        # ---------------- AUTHENTICATED ----------------
+        if request.user.is_authenticated:
+            user_key = f"user:{request.user.id}"
+            db_cart, _ = Cart.objects.get_or_create(user=request.user, is_active=True)
+            item, created = CartItem.objects.get_or_create(
                 cart=db_cart,
                 product=product,
                 defaults={"quantity": quantity, "price_snapshot": product.price}
             )
             if not created:
-                cart_item.quantity = quantity
-                cart_item.price_snapshot = product.price
-                cart_item.save()
+                item.quantity = quantity
+                item.price_snapshot = product.price
+                item.save()
 
             # Sync Redis
             db_cart_data = {
@@ -104,105 +156,155 @@ class AddItemAPIView(APIView):
                     "quantity": i.quantity,
                     "price_snapshot": float(i.price_snapshot),
                     "subtotal": float(i.subtotal)
-                }
-                for i in db_cart.items.all()
+                } for i in db_cart.items.all()
             }
-            save_cart(key, db_cart_data)
-            return CartListAPIView().get(request)
+            save_cart(user_key, db_cart_data)
 
-        # Guest
-        cart_data[str(product_id)] = {
-            "quantity": quantity,
-            "price_snapshot": float(product.price),
-            "subtotal": quantity * float(product.price)
-        }
-        save_cart(key, cart_data)
-        total = sum(i["subtotal"] for i in cart_data.values())
-        return Response({"items": cart_data, "total": total}, status=status.HTTP_200_OK)
-
-
-class UpdateItemAPIView(APIView):
-    permission_classes = []
-
-    @swagger_auto_schema(
-        operation_summary="Update item quantity in cart",
-        operation_description="Set the quantity of a product in the cart (authenticated or guest).",
-        responses={200: "Item updated", 400: "Bad request"}
-    )
-    def post(self, request):
-        product_id = request.data.get("product_id")
-        if not product_id:
-            return Response({"error": "product_id required"}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            quantity = int(request.data.get("quantity", 1))
-            if quantity < 0:
-                raise ValueError
-        except (ValueError, TypeError):
-            return Response({"error": "quantity must be an integer >= 0"}, status=status.HTTP_400_BAD_REQUEST)
-
-        product = get_object_or_404(Product, id=product_id)
-        cart_data, key = CartListAPIView().load_cart(request)
-
-        if request.user.is_authenticated:
-            db_cart, _ = Cart.objects.get_or_create(user=request.user, is_active=True)
-            if quantity == 0:
-                CartItem.objects.filter(cart=db_cart, product=product).delete()
-            else:
-                cart_item, created = CartItem.objects.get_or_create(
-                    cart=db_cart,
-                    product=product,
-                    defaults={"quantity": quantity, "price_snapshot": product.price}
-                )
-                if not created:
-                    cart_item.quantity = quantity
-                    cart_item.price_snapshot = product.price
-                    cart_item.save()
-
-            db_cart_data = {
-                str(i.product.id): {
-                    "quantity": i.quantity,
-                    "price_snapshot": float(i.price_snapshot),
-                    "subtotal": float(i.subtotal)
-                }
-                for i in db_cart.items.all()
-            }
-            save_cart(key, db_cart_data)
-            return CartListAPIView().get(request)
-
-        # Guest
-        if quantity == 0:
-            cart_data.pop(str(product_id), None)
+        # ---------------- GUEST ----------------
         else:
-            cart_data[str(product_id)] = {
+            session_key = request.session.session_key or request.session.create()
+            items = redis_get_cart(session_key) or {}
+            pid = str(product_id)
+            items[pid] = {
                 "quantity": quantity,
                 "price_snapshot": float(product.price),
-                "subtotal": quantity * float(product.price)
+                "subtotal": float(product.price * quantity)
             }
-        save_cart(key, cart_data)
-        total = sum(i["subtotal"] for i in cart_data.values())
-        return Response({"items": cart_data, "total": total}, status=status.HTTP_200_OK)
+            save_cart(session_key, items)
 
-
-class RemoveItemAPIView(APIView):
-    permission_classes = []
-
+        return self.list(request)
+    
+    # ------------------- REMOVE ITEM -------------------
     @swagger_auto_schema(
-        operation_summary="Remove item from cart",
-        operation_description="Remove a product from the cart (guest or authenticated).",
-        responses={200: "Item removed"}
+        operation_summary="Remove an item from cart",
+        operation_description="Completely remove a product from the cart (works for both authenticated and guest users).",
+        responses={200: "Item removed from cart", 400: "Bad request"}
     )
-    def post(self, request):
+    @action(detail=False, methods=["post"])
+    def remove_item(self, request):
         product_id = request.data.get("product_id")
         if not product_id:
-            return Response({"error": "product_id required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "product_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        cart_data, key = CartListAPIView().load_cart(request)
-
+        # ---------------- AUTHENTICATED USER ----------------
         if request.user.is_authenticated:
-            db_cart = Cart.objects.filter(user=request.user, is_active=True).first()
-            if db_cart:
-                CartItem.objects.filter(cart=db_cart, product_id=product_id).delete()
+            user_key = f"user:{request.user.id}"
+            cart = Cart.objects.filter(user=request.user, is_active=True).first()
+            if cart:
+                CartItem.objects.filter(cart=cart, product_id=product_id).delete()
+
+            cart_data = redis_get_cart(user_key)
+            cart_data.pop(str(product_id), None)
+            save_cart(user_key, cart_data)
+
+        # ---------------- GUEST USER ----------------
+        else:
+            session_key = request.session.session_key
+            if not session_key:
+                return Response({"error": "No guest session found"}, status=status.HTTP_400_BAD_REQUEST)
+
+            cart_data = redis_get_cart(session_key)
+            cart_data.pop(str(product_id), None)
+            save_cart(session_key, cart_data)
+
+        return Response({"message": "Item removed from cart"}, status=status.HTTP_200_OK)
+
+    # ------------------- MERGE CART -------------------
+    @swagger_auto_schema(
+        operation_summary="Merge guest cart into user cart",
+        operation_description="Merge anonymous session cart into authenticated user's DB cart after login.",
+        responses={200: "Cart merged successfully"}
+    )
+    @action(detail=False, methods=["post"])
+    def merge_cart(self, request):
+        if not request.user.is_authenticated:
+            return Response({"error": "Not logged in"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        session_key = request.session.session_key
+        if not session_key:
+            return Response({"message": "No anonymous session found"}, status=status.HTTP_400_BAD_REQUEST)
+
+        redis_cart = redis_get_cart(session_key) or {}
+        if not redis_cart:
+            return Response({"message": "No anonymous cart to merge"}, status=status.HTTP_200_OK)
+
+        db_cart, _ = Cart.objects.get_or_create(user=request.user, is_active=True)
+
+        for pid, item in redis_cart.items():
+            product = get_object_or_404(Product, id=pid)
+            cart_item, created = CartItem.objects.get_or_create(
+                cart=db_cart,
+                product=product,
+                defaults={
+                    "quantity": item.get("quantity", 0),
+                    "price_snapshot": item.get("price_snapshot", product.price)
+                }
+            )
+            if not created:
+                cart_item.quantity += int(item.get("quantity", 0))
+                cart_item.price_snapshot = product.price
+                cart_item.save()
+
+        # Sync Redis with DB values
+        user_key = f"user:{request.user.id}"
+        db_cart_data = {
+            str(i.product.id): {
+                "quantity": i.quantity,
+                "price_snapshot": float(i.price_snapshot),
+                "subtotal": float(i.subtotal)
+            } for i in db_cart.items.all()
+        }
+        save_cart(user_key, db_cart_data)
+
+        # Clear guest cart
+        clear_cart(session_key)
+        return Response({"message": "Cart merged successfully"}, status=status.HTTP_200_OK)
+
+    # ------------------- CHECKOUT -------------------
+    @swagger_auto_schema(
+        operation_summary="Checkout",
+        operation_description="Checkout cart for authenticated users. Guest must register/login to checkout.",
+        responses={200: "Checkout initiated"}
+    )
+    @action(detail=False, methods=["post"])
+    def checkout(self, request):
+        if not request.user.is_authenticated:
+            return Response(
+                {"error": "You must be logged in to checkout."},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        user = request.user
+        user_key = f"user:{user.id}"
+
+    # ----------------------- MERGE GUEST CART -----------------------
+        session_key = request.session.session_key
+        if session_key:
+            redis_session_cart = redis_get_cart(session_key) or {}
+
+            if redis_session_cart:
+                db_cart, _ = Cart.objects.get_or_create(user=user, is_active=True)
+
+                for pid, item in redis_session_cart.items():
+                    product = get_object_or_404(Product, id=pid)
+
+                    cart_item = CartItem.objects.filter(cart=db_cart, product=product).first()
+
+                    if cart_item:
+                        # Only increase quantity — DO NOT touch subtotal
+                        cart_item.quantity += int(item.get("quantity", 0))
+                        cart_item.price_snapshot = product.price
+                        cart_item.save()
+                    else:
+                        # Create DB item
+                        CartItem.objects.create(
+                            cart=db_cart,
+                            product=product,
+                            quantity=item.get("quantity", 1),
+                            price_snapshot=item.get("price_snapshot", product.price)
+                        )
+
+                # Sync Redis with authoritative DB
                 db_cart_data = {
                     str(i.product.id): {
                         "quantity": i.quantity,
@@ -211,117 +313,54 @@ class RemoveItemAPIView(APIView):
                     }
                     for i in db_cart.items.all()
                 }
-                save_cart(key, db_cart_data)
-                total = sum(i["subtotal"] for i in db_cart_data.values())
-                return Response({"items": db_cart_data, "total": total}, status=status.HTTP_200_OK)
-            else:
-                return Response({"items": {}, "total": 0}, status=status.HTTP_200_OK)
+                save_cart(user_key, db_cart_data)
 
-        # Guest
-        cart_data.pop(str(product_id), None)
-        save_cart(key, cart_data)
-        total = sum(i["subtotal"] for i in cart_data.values())
-        return Response({"items": cart_data, "total": total}, status=status.HTTP_200_OK)
+                # Clear guest cart
+                clear_cart(session_key)
 
-
-class MergeCartAPIView(APIView):
-    permission_classes = [CartPermission]
-
-    @swagger_auto_schema(
-        operation_summary="Merge guest cart into user cart",
-        operation_description="Merge anonymous session cart into authenticated user's DB cart after login.",
-        responses={200: "Cart merged successfully", 401: "Not logged in"}
-    )
-    def post(self, request):
-        if not request.user.is_authenticated:
-            return Response({"error": "Not logged in"}, status=status.HTTP_401_UNAUTHORIZED)
-
-        session_key = request.session.session_key
-        if not session_key:
-            return Response({"message": "No anonymous session"}, status=status.HTTP_400_BAD_REQUEST)
-
-        guest_cart = get_cart_raw(session_key) or {}
-        if not guest_cart:
-            return Response({"message": "No anonymous cart to merge"}, status=status.HTTP_200_OK)
-
-        db_cart, _ = Cart.objects.get_or_create(user=request.user, is_active=True)
-
-        for pid, item in guest_cart.items():
-            product = get_object_or_404(Product, id=pid)
-            cart_item, created = CartItem.objects.get_or_create(
-                cart=db_cart,
-                product=product,
-                defaults={
-                    "quantity": item.get("quantity", 0),
-                    "price_snapshot": item.get("price_snapshot", product.price)
-                }
-            )
-            if not created:
-                cart_item.quantity = max(cart_item.quantity, int(item.get("quantity", 0)))
-                cart_item.price_snapshot = product.price
-                cart_item.save()
-
-        # Sync Redis and clear guest cart
-        user_key = f"user:{request.user.id}"
-        db_cart_data = {
-            str(i.product.id): {
-                "quantity": i.quantity,
-                "price_snapshot": float(i.price_snapshot),
-                "subtotal": float(i.subtotal)
-            }
-            for i in db_cart.items.all()
-        }
-        save_cart(user_key, db_cart_data)
-        clear_cart(session_key)
-
-        return Response({"message": "Cart merged successfully"}, status=status.HTTP_200_OK)
-
-
-class CheckoutAPIView(APIView):
-    permission_classes = [CartPermission]
-
-    @swagger_auto_schema(
-        operation_summary="Checkout",
-        operation_description="Checkout cart for authenticated users. Guest must register/login to checkout.",
-        responses={200: "Checkout initiated", 401: "Not logged in", 400: "Cart empty"}
-    )
-    def post(self, request):
-        if not request.user.is_authenticated:
-            return Response({"error": "Login required to checkout"}, status=status.HTTP_401_UNAUTHORIZED)
-
-        cart_data, key = CartListAPIView().load_cart(request)
-        db_cart, _ = Cart.objects.get_or_create(user=request.user, is_active=True)
-
-        # Merge Redis values into DB cart
-        for pid, item in cart_data.items():
-            product = get_object_or_404(Product, id=pid)
-            cart_item, created = CartItem.objects.get_or_create(
-                cart=db_cart,
-                product=product,
-                defaults={
-                    "quantity": item.get("quantity", 0),
-                    "price_snapshot": item.get("price_snapshot", product.price)
-                }
-            )
-            if not created:
-                cart_item.quantity = int(item.get("quantity", cart_item.quantity))
-                cart_item.price_snapshot = product.price
-                cart_item.save()
-
-        if not db_cart.items.exists():
+        # ----------------------- FETCH DB CART -----------------------
+        cart = Cart.objects.filter(user=user, is_active=True).first()
+        if not cart or not cart.items.exists():
             return Response({"error": "Your cart is empty"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Trigger Celery
-        checkout_cart_task.delay(
-            cart_id=db_cart.id,
-            redis_key=key,
-            user_email=request.user.email,
-            user_id=request.user.id
-        )
+        # ----------------------- TRIGGER ASYNC CHECKOUT -----------------------
+        checkout_cart.delay(cart.id, user_email=user.email, user_id=user.id)
 
         return Response({"message": "Checkout initiated"}, status=status.HTTP_200_OK)
 
 
+    # ------------------- HELPER -------------------
+    def load_cart(self, request):
+        """
+        Returns (cart_data, source)
+        Authenticated: dict of {product_id: {quantity, price_snapshot, subtotal}}
+        Guest: {"session_key": ..., "items": {...}}
+        """
+        if request.user.is_authenticated:
+            user_key = f"user:{request.user.id}"
+            cached_cart = redis_get_cart(user_key) or {}
+            if cached_cart:
+                return cached_cart, "redis"
+
+            db_cart, _ = Cart.objects.get_or_create(user=request.user, is_active=True)
+            cart_data = {
+                str(i.product.id): {
+                    "quantity": i.quantity,
+                    "price_snapshot": float(i.price_snapshot),
+                    "subtotal": float(i.subtotal)
+                } for i in db_cart.items.all()
+            }
+            save_cart(user_key, cart_data)
+            return cart_data, "redis"
+
+        # Guest
+        session_key = request.session.session_key or request.session.create()
+        cart_data = redis_get_cart(session_key) or {}
+        return {"session_key": session_key, "items": cart_data}, "redis"
 
 
-   
+
+
+
+
+
