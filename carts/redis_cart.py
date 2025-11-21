@@ -1,13 +1,15 @@
 import json
 import redis
 
+# -------------------- REDIS CONNECTION --------------------
 REDIS_HOST = "redis"
 REDIS_PORT = 6379
 REDIS_DB = 0
 
-r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
+r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=True)
 
 
+# -------------------- GET CART --------------------
 def get_cart(key, ttl=86400):
     """
     Retrieve cart from Redis.
@@ -35,6 +37,7 @@ def get_cart(key, ttl=86400):
     return cart
 
 
+# -------------------- SAVE CART --------------------
 def save_cart(key, cart_data, ttl=86400):
     """
     Save the cart back to Redis.
@@ -43,22 +46,28 @@ def save_cart(key, cart_data, ttl=86400):
     """
     redis_key = f"cart:{key}"
     try:
-        # Defensive: ensure correct structure
         for pid, item in cart_data.items():
+            # Ensure quantity is valid
             qty = int(item.get("quantity", 0))
             if qty < 0:
                 qty = 0
             item["quantity"] = qty
+
+            # Ensure price_snapshot is valid
             price = float(item.get("price_snapshot", 0.0))
             item["price_snapshot"] = price
+
+            # Recalculate subtotal
             item["subtotal"] = qty * price
 
+        # Save serialized cart in Redis with TTL
         r.setex(redis_key, ttl, json.dumps(cart_data))
     except (TypeError, ValueError):
-        # If cart_data is not serializable, delete it
+        # Corrupt cart_data → delete key
         r.delete(redis_key)
 
 
+# -------------------- CLEAR CART --------------------
 def clear_cart(key):
     """
     Remove the cart completely from Redis.
@@ -67,12 +76,14 @@ def clear_cart(key):
     r.delete(redis_key)
 
 
+# -------------------- UPDATE CART ITEM --------------------
 def update_cart_item(key, product_id, quantity=None, price=None):
     """
     Update an existing item in Redis cart.
     If quantity is None, do not change it.
     If price is None, do not change it.
     Recalculates subtotal automatically.
+    Returns True if item exists and updated, False otherwise.
     """
     cart = get_cart(key)
     pid = str(product_id)
@@ -80,16 +91,44 @@ def update_cart_item(key, product_id, quantity=None, price=None):
     if pid not in cart:
         return False  # item does not exist
 
+    # Update quantity if provided
     if quantity is not None:
         cart[pid]["quantity"] = max(int(quantity), 0)
+
+    # Update price if provided
     if price is not None:
         cart[pid]["price_snapshot"] = float(price)
 
-    # recalc subtotal
+    # Recalculate subtotal
     cart[pid]["subtotal"] = cart[pid]["quantity"] * cart[pid]["price_snapshot"]
 
     save_cart(key, cart)
     return True
+
+
+# -------------------- ADD/INCREMENT CART ITEM --------------------
+def add_or_increment_cart_item(key, product_id, quantity=1, price=0.0):
+    """
+    Adds a new item to cart or increments the quantity if it exists.
+    Automatically calculates subtotal.
+    """
+    cart = get_cart(key)
+    pid = str(product_id)
+
+    if pid in cart:
+        cart[pid]["quantity"] += int(quantity)
+    else:
+        cart[pid] = {
+            "quantity": int(quantity),
+            "price_snapshot": float(price),
+            "subtotal": int(quantity) * float(price)
+        }
+
+    # Always recalc subtotal to ensure correctness
+    cart[pid]["subtotal"] = cart[pid]["quantity"] * cart[pid]["price_snapshot"]
+    save_cart(key, cart)
+    return cart[pid]
+
 
  
 

@@ -39,6 +39,7 @@ class Order(models.Model):
     def __str__(self):
         return f"Order({self.id})"
 
+
 class OrderItem(models.Model):
     id = models.CharField(
         primary_key=True,
@@ -50,14 +51,20 @@ class OrderItem(models.Model):
     order = models.ForeignKey(Order, related_name="items", on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True)
     quantity = models.PositiveIntegerField(default=1)
-    price_snapshot = models.DecimalField(max_digits=10, decimal_places=2)
-    
+    price_snapshot = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
     @property
     def subtotal(self):
-        return self.price_snapshot * self.quantity
+        """
+        Safe subtotal calculation: returns 0 if quantity or price_snapshot is None.
+        """
+        price = self.price_snapshot or 0
+        quantity = self.quantity or 0
+        return price * quantity
 
     class Meta:
         ordering = ['-id']
+
 
 
 

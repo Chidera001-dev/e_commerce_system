@@ -122,6 +122,10 @@ CACHES = {
     }
 }
 
+
+PAYSTACK_PUBLIC_KEY = config("PAYSTACK_PUBLIC_KEY")
+PAYSTACK_SECRET_KEY = config("PAYSTACK_SECRET_KEY")
+
 # Use Redis for session storage
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 SESSION_CACHE_ALIAS = "default"
@@ -195,6 +199,7 @@ SWAGGER_SETTINGS = {
 CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:8001",
     "http://localhost:8001",
+    "https://bailey-nonevaporative-alta.ngrok-free.dev"
 ]
 
 
