@@ -4,12 +4,28 @@ from rest_framework import status, permissions
 from django.shortcuts import get_object_or_404
 from rest_framework.pagination import PageNumberPagination
 from drf_yasg.utils import swagger_auto_schema
+from django.conf import settings
 
 from .models import Order
 from .serializers import OrderSerializer
 from .permissions import IsOwnerOrAdmin
 from carts.celery_tasks import checkout_cart_to_order
+from paystackapi.paystack import Paystack
 
+# ---------------- PAYSTACK HELPER ----------------
+paystack = Paystack(secret_key=settings.PAYSTACK_SECRET_KEY)
+
+def initialize_transaction(email, amount, reference):
+    response = paystack.transaction.initialize(
+        amount=int(amount * 100),  # Convert to kobo
+        email=email,
+        reference=reference
+    )
+    return response
+
+def verify_transaction(reference):
+    response = paystack.transaction.verify(reference)
+    return response
 
 # ---------------- PAGINATION ----------------
 class OrderPagination(PageNumberPagination):
@@ -66,41 +82,56 @@ class OrderMarkShippedAPIView(APIView):
         order.save()
         return Response({"message": f"Order {order.id} marked as shipped"}, status=status.HTTP_200_OK)
 
-# ---------------- PAYMENT WEBHOOK ----------------
-class PaymentWebhookAPIView(APIView):
-    """
-    Endpoint for payment gateway to notify payment status.
-    """
-    permission_classes = [permissions.AllowAny]  # Gateway posts here
+# ---------------- PAYSTACK INITIALIZE ----------------
+class PaystackInitializeAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
 
     @swagger_auto_schema(
-        operation_summary="Payment Webhook",
-        operation_description="Payment gateway webhook to confirm payment. Updates order status and triggers receipt email.",
+        operation_summary="Initialize Paystack Payment",
+        operation_description="Generate authorization URL for frontend to redirect user for payment."
+    )
+    def post(self, request, order_id):
+        order = get_object_or_404(Order, id=order_id, user=request.user)
+        reference = f"ORD-{order.id}"
+        response = initialize_transaction(order.user.email, order.total, reference)
+
+        if response['status']:
+            return Response({
+                "authorization_url": response['data']['authorization_url'],
+                "access_code": response['data']['access_code'],
+                "reference": reference
+            }, status=200)
+        return Response({"error": response['message']}, status=400)
+
+# ---------------- PAYSTACK PAYMENT WEBHOOK ----------------
+class PaymentWebhookAPIView(APIView):
+    """
+    Endpoint for Paystack webhook to confirm payment.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    @swagger_auto_schema(
+        operation_summary="Paystack Payment Webhook",
+        operation_description="Webhook to verify Paystack payment, update order status, and trigger receipt email."
     )
     def post(self, request):
-        order_id = request.data.get("order_id")
-        payment_status = request.data.get("payment_status")  # "success" or "failed"
-        amount_paid = request.data.get("amount_paid")
+        reference = request.data.get("reference")
+        if not reference:
+            return Response({"error": "Reference missing"}, status=400)
 
+        order_id = reference.replace("ORD-", "")
         order = get_object_or_404(Order, id=order_id)
 
-        if payment_status == "success":
+        verify_resp = verify_transaction(reference)
+        if verify_resp['status'] and verify_resp['data']['status'] == "success":
             order.payment_status = "paid"
             order.status = "processing"
             order.save()
-
-            # Trigger Celery task to send email
+            # Trigger Celery task to send receipt email after successful payment
             checkout_cart_to_order.delay(cart_id=None, user_email=order.user.email, user_id=order.user.id)
-
-            return Response({"message": "Payment confirmed, email sent"}, status=status.HTTP_200_OK)
+            return Response({"message": "Payment verified and email sent"}, status=200)
         else:
             order.payment_status = "failed"
             order.status = "pending"
             order.save()
-            return Response({"message": "Payment failed"}, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-
-
-# Create your views here.
+            return Response({"message": "Payment failed"}, status=400)

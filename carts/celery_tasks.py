@@ -10,26 +10,39 @@ from carts.redis_cart import clear_cart
 @shared_task
 def checkout_cart_to_order(cart_id, user_email=None, user_id=None):
     """
-    Create an Order from Cart, reduce stock, clear cart, send email after payment.
+    Converts a Cart into an Order:
+    - Validates stock
+    - Creates Order and OrderItems
+    - Reduces stock
+    - Clears cart (DB + Redis)
+    - Optionally sends a confirmation email
     """
     cart = get_object_or_404(Cart, id=cart_id)
     items = cart.items.select_related("product").all()
 
+    if not items.exists():
+        raise ValueError("Cannot checkout an empty cart")
+
     with transaction.atomic():
+        # Calculate total
+        total_amount = sum(item.subtotal for item in items)
+
         # Create Order
         order = Order.objects.create(
             user=cart.user,
-            total=sum(item.subtotal for item in items),
+            total=total_amount,
             status="pending",
             payment_status="pending"
         )
 
-        # Transfer CartItems → OrderItems
+        # Transfer CartItems → OrderItems & reduce stock
         for item in items:
             product = Product.objects.select_for_update().get(id=item.product.id)
+
             if product.stock < item.quantity:
                 raise ValueError(f"Insufficient stock for {product.name}")
 
+            # Create OrderItem
             OrderItem.objects.create(
                 order=order,
                 product=product,
@@ -41,38 +54,40 @@ def checkout_cart_to_order(cart_id, user_email=None, user_id=None):
             product.stock -= item.quantity
             product.save()
 
-        # Clear cart
+        # Deactivate and clear cart in DB
         cart.is_active = False
         cart.save()
         cart.items.all().delete()
+
+        # Clear Redis cart
         if user_id:
             clear_cart(f"user:{user_id}")
 
-    # OPTIONAL: Send receipt email AFTER payment
+    # Send confirmation email (optional)
     if user_email:
         items_list = "\n".join(
-            [f"{item.product.name} x {item.quantity} = ${item.subtotal}" for item in items]
+            [f"{i.product.name} x {i.quantity} = ${i.subtotal}" for i in items]
         )
 
         message = f"""
-        Hi {cart.user.username if cart.user else 'Customer'},
+Hi {cart.user.username if cart.user else 'Customer'},
 
-        Thank you for your payment! Your order has been successfully processed.
+Thank you for your payment! Your order has been successfully processed.
 
-        Order ID: {order.id}
-        Total Paid: ${order.total}
+Order ID: {order.id}
+Total Paid: ${order.total}
 
-        Items Purchased:
-        {items_list}
+Items Purchased:
+{items_list}
 
-        Your order is now being prepared for shipment. You will receive another email once it has been shipped.
+Your order is now being prepared for shipment. You will receive another email once it has been shipped.
 
-        If you have any questions or need assistance, please contact our support team at support@shop.com.
+If you have any questions or need assistance, please contact our support team at support@shop.com.
 
-        Thank you for shopping with us!
+Thank you for shopping with us!
 
-        Best regards,
-        The Shop Team
+Best regards,
+The Shop Team
         """
 
         send_mail(
@@ -82,6 +97,8 @@ def checkout_cart_to_order(cart_id, user_email=None, user_id=None):
             recipient_list=[user_email],
             fail_silently=False
         )
+
+    return {"order_id": order.id, "total": float(order.total)}
 
 
 
