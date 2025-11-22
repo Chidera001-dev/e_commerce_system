@@ -196,12 +196,19 @@ SWAGGER_SETTINGS = {
     }
 }
 
-CSRF_TRUSTED_ORIGINS = [
-    "http://127.0.0.1:8001",
-    "http://localhost:8001",
-    "https://bailey-nonevaporative-alta.ngrok-free.dev"
+
+ALLOWED_HOSTS = [
+    '127.0.0.1',
+    'localhost',
+    'bailey-nonevaporative-alta.ngrok-free.dev',
+    '.ngrok-free.dev', 
 ]
 
+CSRF_TRUSTED_ORIGINS = [
+    'http://127.0.0.1:8001',
+    'http://localhost:8001',
+    'https://bailey-nonevaporative-alta.ngrok-free.dev'
+]
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/

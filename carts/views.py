@@ -5,10 +5,12 @@ from rest_framework.response import Response
 from drf_yasg.utils import swagger_auto_schema
 
 from .models import Cart, CartItem
+from orders.models import Order
+
 from product.models import Product
 from .permissions import CartPermission
 from .redis_cart import get_cart as redis_get_cart, save_cart, clear_cart
-from .celery_tasks import checkout_cart_to_order
+from .celery_tasks import process_order_after_payment
 
 
 class CartViewSet(viewsets.ViewSet):
@@ -192,27 +194,132 @@ class CartViewSet(viewsets.ViewSet):
             save_cart(session_key, cart_data)
 
         return Response({"message": "Item removed from cart"}, status=200)
+    
+    # ------------------- MERGE CART -------------------
+    @swagger_auto_schema(
+        operation_summary="Merge guest cart into user cart",
+        operation_description="Merge anonymous session cart into authenticated user's DB cart after login.",
+        responses={200: "Cart merged successfully"}
+    )
+    @action(detail=False, methods=["post"])
+    def merge_cart(self, request):
+        # Must be logged in
+        if not request.user.is_authenticated:
+            return Response(
+                    {"error": "Not logged in"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
 
-    # ------------------- CHECKOUT -------------------
+        # Get session key (guest cart)
+        session_key = request.session.session_key
+        if not session_key:
+            return Response(
+                {"message": "No anonymous session found"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Fetch guest cart from Redis
+        redis_cart = redis_get_cart(session_key) or {}
+        if not redis_cart:
+            return Response(
+                {"message": "No anonymous cart to merge"},
+                status=status.HTTP_200_OK
+            )
+
+        # Get user's active DB cart
+        db_cart, _ = Cart.objects.get_or_create(
+            user=request.user,
+            is_active=True
+        )
+
+        # Merge Redis cart into DB cart
+        for pid, item in redis_cart.items():
+            product = get_object_or_404(Product, id=pid)
+
+            cart_item, created = CartItem.objects.get_or_create(
+                cart=db_cart,
+                product=product,
+                defaults={
+                    "quantity": item.get("quantity", 0),
+                    "price_snapshot": item.get("price_snapshot", product.price)
+                }
+            )
+
+            # If already in DB → update quantity and price
+            if not created:
+                cart_item.quantity += int(item.get("quantity", 0))
+                cart_item.price_snapshot = product.price
+                cart_item.save()
+
+        # Sync: DB Cart → Redis User Cart
+        user_key = f"user:{request.user.id}"
+        db_cart_data = {
+            str(i.product.id): {
+                "quantity": i.quantity,
+                "price_snapshot": float(i.price_snapshot),
+                "subtotal": float(i.subtotal)
+            }
+            for i in db_cart.items.all()
+        }
+        save_cart(user_key, db_cart_data)
+
+        # Remove guest cart from Redis
+        clear_cart(session_key)
+
+        return Response(
+            {"message": "Cart merged successfully"},
+            status=status.HTTP_200_OK
+        )
+
+      # ------------------- CHECKOUT -------------------
     @swagger_auto_schema(
         operation_summary="Checkout",
-        operation_description="Checkout cart for authenticated users. Guest must register/login to checkout.",
-        responses={200: "Checkout initiated"}
+        operation_description=(
+            "Initiate checkout for authenticated users (generates Paystack payment reference). "
+            "Guest must register/login to checkout."
+        ),
+        responses={200: "Payment reference created"}
     )
     @action(detail=False, methods=["post"])
     def checkout(self, request):
+        from orders.views import initialize_transaction
         if not request.user.is_authenticated:
-            return Response({"error": "Login required"}, status=401)
+            return Response({"error": "Login required"}, status=status.HTTP_401_UNAUTHORIZED)
 
+        # Get active cart
         cart = Cart.objects.filter(user=request.user, is_active=True).first()
         if not cart or not cart.items.exists():
             return Response({"error": "Cart is empty"}, status=400)
 
-        checkout_cart_to_order.delay(cart.id, user_email=request.user.email, user_id=request.user.id)
+        # Create pending order
+        total_amount = sum(item.subtotal for item in cart.items.all())
+        order = Order.objects.create(
+            user=request.user,
+            total=total_amount,
+            status="pending",
+            payment_status="pending"
+        )
 
-        return Response({"message": "Checkout initiated", "order_cart_id": cart.id}, status=200)
+        # Generate Paystack reference
+        reference = f"CART-{cart.id}"
 
-    # ------------------- HELPER -------------------
+        # Initialize Paystack transaction
+        paystack_resp = initialize_transaction(request.user.email, cart.total, reference)
+
+        if paystack_resp["status"]:
+            return Response({
+                "order_id": order.id,
+                "authorization_url": paystack_resp["data"]["authorization_url"],
+                "access_code": paystack_resp["data"]["access_code"],
+                "reference": reference
+            }, status=200)
+
+        return Response(
+            {"error": paystack_resp.get("message", "Payment initialization failed")},
+            status=400
+        )
+    # ------------------- LOAD CART -------------------
+    
     def load_cart(self, request):
         """
         Returns (cart_data, source)
@@ -239,11 +346,3 @@ class CartViewSet(viewsets.ViewSet):
         session_key = request.session.session_key or request.session.create()
         cart_data = redis_get_cart(session_key) or {}
         return {"session_key": session_key, "items": cart_data}, "redis"
-
-
-
-
-
-
-
-
