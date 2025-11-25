@@ -1,4 +1,3 @@
-from django.db import models
 import shortuuid
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
@@ -46,7 +45,9 @@ class User(AbstractUser):
     # Roles
     is_customer = models.BooleanField(default=True)
     is_vendor = models.BooleanField(default=False)
-    is_active = models.BooleanField(default=True)  # Vendors can be inactive until approved
+    is_active = models.BooleanField(
+        default=True
+    )  # Vendors can be inactive until approved
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username", "phone_number"]
@@ -73,5 +74,6 @@ class Profile(models.Model):
 
     def __str__(self):
         return f"{self.user.username} Profile"
+
 
 # Create your models here.

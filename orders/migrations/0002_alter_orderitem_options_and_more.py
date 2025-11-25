@@ -7,45 +7,77 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('orders', '0001_initial'),
+        ("orders", "0001_initial"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='orderitem',
-            options={'ordering': ['-id']},
+            name="orderitem",
+            options={"ordering": ["-id"]},
         ),
         migrations.RemoveField(
-            model_name='order',
-            name='shipping_address',
+            model_name="order",
+            name="shipping_address",
         ),
         migrations.RemoveField(
-            model_name='orderitem',
-            name='subtotal',
+            model_name="orderitem",
+            name="subtotal",
         ),
         migrations.AddField(
-            model_name='order',
-            name='payment_status',
-            field=models.CharField(choices=[('pending', 'Pending'), ('paid', 'Paid'), ('failed', 'Failed')], default='pending', max_length=20),
+            model_name="order",
+            name="payment_status",
+            field=models.CharField(
+                choices=[
+                    ("pending", "Pending"),
+                    ("paid", "Paid"),
+                    ("failed", "Failed"),
+                ],
+                default="pending",
+                max_length=20,
+            ),
         ),
         migrations.AddField(
-            model_name='order',
-            name='transaction_id',
+            model_name="order",
+            name="transaction_id",
             field=models.CharField(blank=True, max_length=100, null=True),
         ),
         migrations.AlterField(
-            model_name='order',
-            name='id',
-            field=models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True),
+            model_name="order",
+            name="id",
+            field=models.CharField(
+                default=shortuuid.main.ShortUUID.uuid,
+                editable=False,
+                max_length=22,
+                primary_key=True,
+                serialize=False,
+                unique=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='order',
-            name='status',
-            field=models.CharField(choices=[('pending', 'Pending'), ('paid', 'Paid'), ('shipped', 'Shipped'), ('completed', 'Completed'), ('cancelled', 'Cancelled')], default='pending', max_length=20),
+            model_name="order",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("pending", "Pending"),
+                    ("paid", "Paid"),
+                    ("shipped", "Shipped"),
+                    ("completed", "Completed"),
+                    ("cancelled", "Cancelled"),
+                ],
+                default="pending",
+                max_length=20,
+            ),
         ),
         migrations.AlterField(
-            model_name='orderitem',
-            name='id',
-            field=models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True),
+            model_name="orderitem",
+            name="id",
+            field=models.CharField(
+                default=shortuuid.main.ShortUUID.uuid,
+                editable=False,
+                max_length=22,
+                primary_key=True,
+                serialize=False,
+                unique=True,
+            ),
         ),
     ]

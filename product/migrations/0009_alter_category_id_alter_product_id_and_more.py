@@ -7,23 +7,37 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('product', '0008_alter_product_options_alter_category_id_and_more'),
+        ("product", "0008_alter_product_options_alter_category_id_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='category',
-            name='id',
-            field=models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True),
+            model_name="category",
+            name="id",
+            field=models.CharField(
+                default=shortuuid.main.ShortUUID.uuid,
+                editable=False,
+                max_length=22,
+                primary_key=True,
+                serialize=False,
+                unique=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='product',
-            name='id',
-            field=models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True),
+            model_name="product",
+            name="id",
+            field=models.CharField(
+                default=shortuuid.main.ShortUUID.uuid,
+                editable=False,
+                max_length=22,
+                primary_key=True,
+                serialize=False,
+                unique=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='product',
-            name='slug',
+            model_name="product",
+            name="slug",
             field=models.SlugField(blank=True, null=True),
         ),
     ]

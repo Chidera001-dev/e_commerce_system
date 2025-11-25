@@ -1,4 +1,5 @@
 import json
+
 import redis
 
 # -------------------- REDIS CONNECTION --------------------
@@ -121,16 +122,10 @@ def add_or_increment_cart_item(key, product_id, quantity=1, price=0.0):
         cart[pid] = {
             "quantity": int(quantity),
             "price_snapshot": float(price),
-            "subtotal": int(quantity) * float(price)
+            "subtotal": int(quantity) * float(price),
         }
 
     # Always recalc subtotal to ensure correctness
     cart[pid]["subtotal"] = cart[pid]["quantity"] * cart[pid]["price_snapshot"]
     save_cart(key, cart)
     return cart[pid]
-
-
- 
-
-
-

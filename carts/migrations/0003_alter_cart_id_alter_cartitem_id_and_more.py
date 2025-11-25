@@ -7,23 +7,39 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('carts', '0002_alter_cartitem_options_alter_cart_id_and_more'),
+        ("carts", "0002_alter_cartitem_options_alter_cart_id_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='cart',
-            name='id',
-            field=models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True),
+            model_name="cart",
+            name="id",
+            field=models.CharField(
+                default=shortuuid.main.ShortUUID.uuid,
+                editable=False,
+                max_length=22,
+                primary_key=True,
+                serialize=False,
+                unique=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='cartitem',
-            name='id',
-            field=models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True),
+            model_name="cartitem",
+            name="id",
+            field=models.CharField(
+                default=shortuuid.main.ShortUUID.uuid,
+                editable=False,
+                max_length=22,
+                primary_key=True,
+                serialize=False,
+                unique=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='cartitem',
-            name='price_snapshot',
-            field=models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True),
+            model_name="cartitem",
+            name="price_snapshot",
+            field=models.DecimalField(
+                blank=True, decimal_places=2, max_digits=10, null=True
+            ),
         ),
     ]

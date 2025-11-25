@@ -1,24 +1,23 @@
 import hashlib
 import hmac
 import json
+
 from django.conf import settings
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from .models import Order
-from carts.celery_tasks import process_order_after_payment
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status, permissions
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
+from rest_framework import permissions, status
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from .serializers import OrderSerializer
-from .permissions import IsOwnerOrAdmin
-from .pagination import OrderPagination
-from carts.models import Cart
 from carts.celery_tasks import process_order_after_payment
+from carts.models import Cart
+
+from .models import Order
+from .pagination import OrderPagination
+from .permissions import IsOwnerOrAdmin
+from .serializers import OrderSerializer
 from .utils import initialize_transaction, verify_transaction
+
 
 # ---------------- ORDER LIST ----------------
 class OrderListAPIView(APIView):
@@ -27,7 +26,7 @@ class OrderListAPIView(APIView):
     @swagger_auto_schema(
         operation_summary="List Orders",
         operation_description="List all orders for authenticated user or all orders if admin. Supports pagination.",
-        responses={200: OrderSerializer(many=True)}
+        responses={200: OrderSerializer(many=True)},
     )
     def get(self, request):
         user = request.user
@@ -40,6 +39,7 @@ class OrderListAPIView(APIView):
         serializer = OrderSerializer(result_page, many=True)
         return paginator.get_paginated_response(serializer.data)
 
+
 # ---------------- ORDER DETAIL ----------------
 class OrderDetailAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrAdmin]
@@ -47,7 +47,7 @@ class OrderDetailAPIView(APIView):
     @swagger_auto_schema(
         operation_summary="Order Detail",
         operation_description="Retrieve details of a specific order by ID. Users can only access their own orders.",
-        responses={200: OrderSerializer()}
+        responses={200: OrderSerializer()},
     )
     def get(self, request, order_id):
         order = get_object_or_404(Order, id=order_id)
@@ -55,32 +55,39 @@ class OrderDetailAPIView(APIView):
         serializer = OrderSerializer(order)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+
 # ---------------- MARK SHIPPED ----------------
 class OrderMarkShippedAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
 
     @swagger_auto_schema(
         operation_summary="Mark Order as Shipped",
-        operation_description="Admin endpoint to mark an order as shipped."
+        operation_description="Admin endpoint to mark an order as shipped.",
     )
     def post(self, request, order_id):
         order = get_object_or_404(Order, id=order_id)
         order.status = "shipped"
         order.save()
-        return Response({"message": f"Order {order.id} marked as shipped"}, status=status.HTTP_200_OK)
+        return Response(
+            {"message": f"Order {order.id} marked as shipped"},
+            status=status.HTTP_200_OK,
+        )
+
 
 # ---------------- PAYSTACK WEBHOOK ----------------
 class PaymentWebhookAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
     @swagger_auto_schema(
-        operation_summary="Paystack Payment Webhook",   
-        operation_description="Endpoint to handle Paystack payment webhooks with signature validation."
-    )       
+        operation_summary="Paystack Payment Webhook",
+        operation_description="Endpoint to handle Paystack payment webhooks with signature validation.",
+    )
     def post(self, request):
         # ------------------ SIGNATURE CHECK ------------------
         if settings.DEBUG:
-            print("DEBUG MODE: Skipping Paystack signature validation for Postman testing...")
+            print(
+                "DEBUG MODE: Skipping Paystack signature validation for Postman testing..."
+            )
         else:
             paystack_signature = request.headers.get("X-Paystack-Signature")
             if not paystack_signature:
@@ -90,9 +97,7 @@ class PaymentWebhookAPIView(APIView):
             body = request.body  # raw bytes
 
             computed_signature = hmac.new(
-                key=secret_key.encode("utf-8"),
-                msg=body,
-                digestmod=hashlib.sha512
+                key=secret_key.encode("utf-8"), msg=body, digestmod=hashlib.sha512
             ).hexdigest()
 
             if not hmac.compare_digest(computed_signature, paystack_signature):
@@ -108,13 +113,17 @@ class PaymentWebhookAPIView(APIView):
         order_id = reference.replace("ORD-", "")
         order = Order.objects.filter(id=order_id, payment_status="pending").first()
         if not order:
-            return Response({"message": "Order already processed or not found"}, status=200)
+            return Response(
+                {"message": "Order already processed or not found"}, status=200
+            )
 
         # ------------------ TRIGGER CELERY ------------------
         process_order_after_payment.delay(
             order_id=order.id,
             user_email=order.user.email if order.user else None,
-            user_id=order.user.id if order.user else None
+            user_id=order.user.id if order.user else None,
         )
 
-        return Response({"message": "Payment verified. Order processing started."}, status=200)
+        return Response(
+            {"message": "Payment verified. Order processing started."}, status=200
+        )

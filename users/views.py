@@ -1,24 +1,28 @@
-from rest_framework import status, permissions
-from rest_framework.views import APIView
-from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
-from .models import User, Profile
+from rest_framework import permissions, status
 from rest_framework.exceptions import PermissionDenied
-from rest_framework import permissions
-from .serializers import CustomUserCreateSerializer, ProfileSerializer,CustomUserUpdateSerializer
-from .permissions import IsOwnerOrAdmin , IsAdminUser 
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
+from .models import Profile, User
+from .permissions import IsAdminUser, IsOwnerOrAdmin
+from .serializers import (
+    CustomUserCreateSerializer,
+    CustomUserUpdateSerializer,
+    ProfileSerializer,
+)
 
 # ------------------ USER VIEWS ------------------
+
 
 class UserListCreateAPIView(APIView):
     """
     Admin can list all users or create a new one.
     Normal users cannot access this endpoint.
     """
-    permission_classes = [IsAdminUser]
 
+    permission_classes = [IsAdminUser]
 
     @swagger_auto_schema(
         operation_summary="List all users (Admin only)",
@@ -49,6 +53,7 @@ class UserDetailAPIView(APIView):
     Retrieve, update, or delete a specific user.
     Only the user themselves or an admin can access this endpoint.
     """
+
     permission_classes = [IsAdminUser]
 
     def get_object(self, pk):
@@ -96,6 +101,7 @@ class MeAPIView(APIView):
     """
     Authenticated users can view, update, or delete their own user details.
     """
+
     permission_classes = [permissions.IsAuthenticated]
 
     @swagger_auto_schema(
@@ -114,7 +120,9 @@ class MeAPIView(APIView):
         responses={200: CustomUserUpdateSerializer},
     )
     def patch(self, request):
-        serializer = CustomUserUpdateSerializer(request.user, data=request.data, partial=True)
+        serializer = CustomUserUpdateSerializer(
+            request.user, data=request.data, partial=True
+        )
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
@@ -130,23 +138,26 @@ class MeAPIView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-
 # ------------------ PROFILE VIEWS ------------------
+
 
 class ProfileDetailAPIView(APIView):
     """
     - Admin can view or update any profile (using /profiles/<uuid>/)
     - Normal users can only view or update their own profile (using /profiles/)
     """
+
     permission_classes = [IsOwnerOrAdmin]
 
     def get_object(self, request, uuid=None):
         # If UUID is provided, only admin can use it
         if uuid:
             if not request.user.is_staff:
-                raise PermissionDenied("You do not have permission to access other users' profiles.")
+                raise PermissionDenied(
+                    "You do not have permission to access other users' profiles."
+                )
             return get_object_or_404(Profile, user__id=uuid)
-        
+
         # Normal user: access their own profile
         return get_object_or_404(Profile, user=request.user)
 

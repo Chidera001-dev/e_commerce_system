@@ -1,13 +1,16 @@
 import logging
+
 from celery import shared_task
 from django.core.mail import send_mail
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+
+from carts.redis_cart import clear_cart
 from orders.models import Order, OrderItem
 from product.models import Product
-from carts.redis_cart import clear_cart
 
 logger = logging.getLogger(__name__)
+
 
 @shared_task(bind=True, max_retries=3)
 def process_order_after_payment(self, order_id, user_email=None, user_id=None):
@@ -22,7 +25,7 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
             order.status = "pending_items"
             order.payment_status = "pending"
             order.save()
-            return  
+            return
 
         with transaction.atomic():
 
@@ -48,7 +51,10 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
         # send email
         if user_email:
             items_list = "\n".join(
-                [f"{i.product.name} x {i.quantity} = ₦{i.subtotal}" for i in order_items]
+                [
+                    f"{i.product.name} x {i.quantity} = ₦{i.subtotal}"
+                    for i in order_items
+                ]
             )
             message = f"""
 Hi {order.user.username if order.user else 'Customer'},
@@ -69,7 +75,7 @@ Thank you for your purchase!
                 message=message,
                 from_email="no-reply@shop.com",
                 recipient_list=[user_email],
-                fail_silently=False
+                fail_silently=False,
             )
 
         logger.info(f"Order {order.id} processed SUCCESSFULLY.")
@@ -77,4 +83,3 @@ Thank you for your purchase!
     except Exception as exc:
         logger.error(f"Failed processing order {order_id}: {exc}")
         raise self.retry(exc=exc, countdown=10)
-

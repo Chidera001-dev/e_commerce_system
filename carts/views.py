@@ -1,16 +1,18 @@
 from django.shortcuts import get_object_or_404
-from rest_framework import viewsets, status
+from drf_yasg.utils import swagger_auto_schema
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from drf_yasg.utils import swagger_auto_schema
 
-from .models import Cart, CartItem
 from orders.models import Order, OrderItem
-
 from product.models import Product
-from .permissions import CartPermission
-from .redis_cart import get_cart as redis_get_cart, save_cart, clear_cart
+
 from .celery_tasks import process_order_after_payment
+from .models import Cart, CartItem
+from .permissions import CartPermission
+from .redis_cart import clear_cart
+from .redis_cart import get_cart as redis_get_cart
+from .redis_cart import save_cart
 
 
 class CartViewSet(viewsets.ViewSet):
@@ -20,7 +22,7 @@ class CartViewSet(viewsets.ViewSet):
     @swagger_auto_schema(
         operation_summary="Get cart",
         operation_description="Retrieve the current cart (guest or authenticated).",
-        responses={200: "Cart retrieved successfully"}
+        responses={200: "Cart retrieved successfully"},
     )
     def list(self, request):
         if request.user.is_authenticated:
@@ -40,7 +42,7 @@ class CartViewSet(viewsets.ViewSet):
     @swagger_auto_schema(
         operation_summary="Add item to cart",
         operation_description="Add a product to the cart (supports authenticated and guest users).",
-        responses={200: "Item added to cart"}
+        responses={200: "Item added to cart"},
     )
     @action(detail=False, methods=["post"])
     def add_item(self, request):
@@ -71,7 +73,7 @@ class CartViewSet(viewsets.ViewSet):
             item, created = CartItem.objects.get_or_create(
                 cart=db_cart,
                 product=product,
-                defaults={"quantity": quantity, "price_snapshot": product.price}
+                defaults={"quantity": quantity, "price_snapshot": product.price},
             )
             if not created:
                 item.quantity += quantity
@@ -83,8 +85,9 @@ class CartViewSet(viewsets.ViewSet):
                 str(i.product.id): {
                     "quantity": i.quantity,
                     "price_snapshot": float(i.price_snapshot),
-                    "subtotal": float(i.subtotal)
-                } for i in db_cart.items.all()
+                    "subtotal": float(i.subtotal),
+                }
+                for i in db_cart.items.all()
             }
             save_cart(user_key, db_cart_data)
 
@@ -98,9 +101,11 @@ class CartViewSet(viewsets.ViewSet):
                 items[pid] = {
                     "quantity": quantity,
                     "price_snapshot": float(product.price),
-                    "subtotal": float(product.price * quantity)
+                    "subtotal": float(product.price * quantity),
                 }
-            items[pid]["subtotal"] = float(items[pid]["quantity"] * items[pid]["price_snapshot"])
+            items[pid]["subtotal"] = float(
+                items[pid]["quantity"] * items[pid]["price_snapshot"]
+            )
             save_cart(session_key, items)
 
         return self.list(request)
@@ -109,7 +114,7 @@ class CartViewSet(viewsets.ViewSet):
     @swagger_auto_schema(
         operation_summary="Update item quantity in cart",
         operation_description="Set the quantity of a product in the cart (authenticated or guest).",
-        responses={200: "Item quantity updated"}
+        responses={200: "Item quantity updated"},
     )
     @action(detail=False, methods=["post"])
     def update_item(self, request):
@@ -133,7 +138,7 @@ class CartViewSet(viewsets.ViewSet):
             item, created = CartItem.objects.get_or_create(
                 cart=db_cart,
                 product=product,
-                defaults={"quantity": quantity, "price_snapshot": product.price}
+                defaults={"quantity": quantity, "price_snapshot": product.price},
             )
             if not created:
                 item.quantity = quantity
@@ -145,8 +150,9 @@ class CartViewSet(viewsets.ViewSet):
                 str(i.product.id): {
                     "quantity": i.quantity,
                     "price_snapshot": float(i.price_snapshot),
-                    "subtotal": float(i.subtotal)
-                } for i in db_cart.items.all()
+                    "subtotal": float(i.subtotal),
+                }
+                for i in db_cart.items.all()
             }
             save_cart(user_key, db_cart_data)
 
@@ -167,8 +173,11 @@ class CartViewSet(viewsets.ViewSet):
     # ------------------- REMOVE ITEM -------------------
     @swagger_auto_schema(
         operation_summary="Remove an item from cart",
-        operation_description="Completely remove a product from the cart (works for both authenticated and guest users).",
-        responses={200: "Item removed from cart", 400: "Bad request"}
+        operation_description=(
+            "Completely remove a product from the cart. "
+            "Updates DB and Redis. Marks cart inactive if empty."
+        ),
+        responses={200: "Item removed from cart", 400: "Bad request"},
     )
     @action(detail=False, methods=["post"])
     def remove_item(self, request):
@@ -177,37 +186,55 @@ class CartViewSet(viewsets.ViewSet):
             return Response({"error": "product_id is required"}, status=400)
 
         if request.user.is_authenticated:
-            user_key = f"user:{request.user.id}"
+            # Handle authenticated user's cart
             cart = Cart.objects.filter(user=request.user, is_active=True).first()
+            user_key = f"user:{request.user.id}"
+
             if cart:
+                # Remove the CartItem from DB
                 CartItem.objects.filter(cart=cart, product_id=product_id).delete()
-            cart_data = redis_get_cart(user_key)
+
+                # Check if the cart is now empty
+                if not cart.items.exists():
+                    cart.is_active = False
+                    cart.save()
+
+            # Update Redis
+            cart_data = redis_get_cart(user_key) or {}
             cart_data.pop(str(product_id), None)
-            save_cart(user_key, cart_data)
+            if not cart_data:
+                clear_cart(user_key)
+            else:
+                save_cart(user_key, cart_data)
 
         else:
+            # Handle guest user's cart
             session_key = request.session.session_key
             if not session_key:
                 return Response({"error": "No guest session found"}, status=400)
-            cart_data = redis_get_cart(session_key)
+
+            cart_data = redis_get_cart(session_key) or {}
             cart_data.pop(str(product_id), None)
-            save_cart(session_key, cart_data)
+
+            if not cart_data:
+                clear_cart(session_key)
+            else:
+                save_cart(session_key, cart_data)
 
         return Response({"message": "Item removed from cart"}, status=200)
-    
+
     # ------------------- MERGE CART -------------------
     @swagger_auto_schema(
         operation_summary="Merge guest cart into user cart",
         operation_description="Merge anonymous session cart into authenticated user's DB cart after login.",
-        responses={200: "Cart merged successfully"}
+        responses={200: "Cart merged successfully"},
     )
     @action(detail=False, methods=["post"])
     def merge_cart(self, request):
         # Must be logged in
         if not request.user.is_authenticated:
             return Response(
-                    {"error": "Not logged in"},
-                status=status.HTTP_401_UNAUTHORIZED
+                {"error": "Not logged in"}, status=status.HTTP_401_UNAUTHORIZED
             )
 
         # Get session key (guest cart)
@@ -215,22 +242,18 @@ class CartViewSet(viewsets.ViewSet):
         if not session_key:
             return Response(
                 {"message": "No anonymous session found"},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         # Fetch guest cart from Redis
         redis_cart = redis_get_cart(session_key) or {}
         if not redis_cart:
             return Response(
-                {"message": "No anonymous cart to merge"},
-                status=status.HTTP_200_OK
+                {"message": "No anonymous cart to merge"}, status=status.HTTP_200_OK
             )
 
         # Get user's active DB cart
-        db_cart, _ = Cart.objects.get_or_create(
-            user=request.user,
-            is_active=True
-        )
+        db_cart, _ = Cart.objects.get_or_create(user=request.user, is_active=True)
 
         # Merge Redis cart into DB cart
         for pid, item in redis_cart.items():
@@ -241,8 +264,8 @@ class CartViewSet(viewsets.ViewSet):
                 product=product,
                 defaults={
                     "quantity": item.get("quantity", 0),
-                    "price_snapshot": item.get("price_snapshot", product.price)
-                }
+                    "price_snapshot": item.get("price_snapshot", product.price),
+                },
             )
 
             # If already in DB → update quantity and price
@@ -257,7 +280,7 @@ class CartViewSet(viewsets.ViewSet):
             str(i.product.id): {
                 "quantity": i.quantity,
                 "price_snapshot": float(i.price_snapshot),
-                "subtotal": float(i.subtotal)
+                "subtotal": float(i.subtotal),
             }
             for i in db_cart.items.all()
         }
@@ -267,18 +290,17 @@ class CartViewSet(viewsets.ViewSet):
         clear_cart(session_key)
 
         return Response(
-            {"message": "Cart merged successfully"},
-            status=status.HTTP_200_OK
+            {"message": "Cart merged successfully"}, status=status.HTTP_200_OK
         )
 
-   # ------------------- CHECKOUT -------------------
+    # ------------------- CHECKOUT -------------------
     @swagger_auto_schema(
         operation_summary="Checkout",
         operation_description=(
             "Checkout for authenticated users. Converts cart → order and "
             "initializes payment using order-based reference."
         ),
-        responses={200: "Order created and payment URL returned"}
+        responses={200: "Order created and payment URL returned"},
     )
     @action(detail=False, methods=["post"])
     def checkout(self, request):
@@ -301,7 +323,7 @@ class CartViewSet(viewsets.ViewSet):
             total=total_amount,
             status="pending",
             payment_status="pending",
-            cart=cart  
+            cart=cart,
         )
 
         # Transfer cart items into OrderItems
@@ -310,44 +332,48 @@ class CartViewSet(viewsets.ViewSet):
                 order=order,
                 product=item.product,
                 quantity=item.quantity,
-                price_snapshot=item.price_snapshot
+                price_snapshot=item.price_snapshot,
             )
             for item in cart.items.all()
         ]
         OrderItem.objects.bulk_create(order_items)
 
-    # Optionally, clear the cart in DB
+        # Optionally, clear the cart in DB
         cart.items.all().delete()
         cart.is_active = False
         cart.save()
-
 
         # Order-based reference only
         reference = f"ORD-{order.id}"
 
         # Initialize Paystack with order.total
         paystack_resp = initialize_transaction(
-            request.user.email,
-            int(order.total),
-            reference
+            request.user.email, int(order.total), reference
         )
 
         if not paystack_resp["status"]:
             return Response(
-                {"error": paystack_resp.get("message", "Payment initialization failed")},
-                status=400
+                {
+                    "error": paystack_resp.get(
+                        "message", "Payment initialization failed"
+                    )
+                },
+                status=400,
             )
 
         # Return payment details
-        return Response({
-            "order_id": order.id,
-            "authorization_url": paystack_resp["data"]["authorization_url"],
-            "access_code": paystack_resp["data"]["access_code"],
-            "reference": reference
-        }, status=200)
+        return Response(
+            {
+                "order_id": order.id,
+                "authorization_url": paystack_resp["data"]["authorization_url"],
+                "access_code": paystack_resp["data"]["access_code"],
+                "reference": reference,
+            },
+            status=200,
+        )
 
     # ------------------- LOAD CART -------------------
-    
+
     def load_cart(self, request):
         """
         Returns (cart_data, source)
@@ -365,8 +391,9 @@ class CartViewSet(viewsets.ViewSet):
                 str(i.product.id): {
                     "quantity": i.quantity,
                     "price_snapshot": float(i.price_snapshot),
-                    "subtotal": float(i.subtotal)
-                } for i in db_cart.items.all()
+                    "subtotal": float(i.subtotal),
+                }
+                for i in db_cart.items.all()
             }
             save_cart(user_key, cart_data)
             return cart_data, "redis"
