@@ -1,15 +1,26 @@
 from rest_framework import serializers
-from .models import Cart, CartItem
+
 from product.models import Product
 
+from .models import Cart, CartItem
+
+
 class CartItemSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source='product.name', read_only=True)
-    product_image = serializers.ImageField(source='product.image', read_only=True)  
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    product_image = serializers.ImageField(source="product.image", read_only=True)
     subtotal = serializers.SerializerMethodField()
 
     class Meta:
         model = CartItem
-        fields = ['id', 'product', 'product_name', 'product_image', 'quantity', 'price_snapshot', 'subtotal']
+        fields = [
+            "id",
+            "product",
+            "product_name",
+            "product_image",
+            "quantity",
+            "price_snapshot",
+            "subtotal",
+        ]
 
     def get_subtotal(self, obj):
         return obj.subtotal
@@ -21,7 +32,7 @@ class CartSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Cart
-        fields = ['id', 'user', 'items', 'total']
+        fields = ["id", "user", "items", "total"]
 
     def get_total(self, obj):
         return obj.total

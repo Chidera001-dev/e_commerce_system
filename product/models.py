@@ -1,6 +1,6 @@
 import shortuuid
-from django.db import models
 from django.conf import settings
+from django.db import models
 from django.utils.text import slugify
 
 
@@ -18,7 +18,7 @@ class Category(models.Model):
 
     class Meta:
         verbose_name_plural = "Categories"
-        ordering = ['name']
+        ordering = ["name"]
 
     def save(self, *args, **kwargs):
         # Automatically generate slug if not provided
@@ -45,14 +45,10 @@ class Product(models.Model):
         unique=True,
     )
     owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="products"
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="products"
     )
     category = models.ForeignKey(
-        Category,
-        on_delete=models.CASCADE,
-        related_name="products"
+        Category, on_delete=models.CASCADE, related_name="products"
     )
     name = models.CharField(max_length=255)
     slug = models.SlugField(unique=False, blank=True, null=True)
@@ -65,7 +61,7 @@ class Product(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
 
     def save(self, *args, **kwargs):
         # Automatically generate unique slug if not provided
@@ -81,9 +77,6 @@ class Product(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.category.name})"
-
-
-
 
 
 # Create your models here.

@@ -1,10 +1,12 @@
-from django.db import models
-from django.conf import settings
 import shortuuid
+from django.conf import settings
+from django.db import models
+
+from carts.models import Cart
 from product.models import Product
-from carts.models import Cart 
 
 User = settings.AUTH_USER_MODEL
+
 
 class Order(models.Model):
     STATUS_CHOICES = [
@@ -12,13 +14,13 @@ class Order(models.Model):
         ("paid", "Paid"),
         ("shipped", "Shipped"),
         ("completed", "Completed"),
-        ("cancelled", "Cancelled")
+        ("cancelled", "Cancelled"),
     ]
 
     PAYMENT_STATUS_CHOICES = [
         ("pending", "Pending"),
         ("paid", "Paid"),
-        ("failed", "Failed")
+        ("failed", "Failed"),
     ]
 
     id = models.CharField(
@@ -26,18 +28,16 @@ class Order(models.Model):
         max_length=22,
         default=shortuuid.uuid,
         editable=False,
-        unique=True
+        unique=True,
     )
     user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
     cart = models.OneToOneField(
-        Cart,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="order"
+        Cart, null=True, blank=True, on_delete=models.SET_NULL, related_name="order"
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
-    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default="pending")
+    payment_status = models.CharField(
+        max_length=20, choices=PAYMENT_STATUS_CHOICES, default="pending"
+    )
     total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     payment_method = models.CharField(max_length=50, null=True, blank=True)
     transaction_id = models.CharField(max_length=100, null=True, blank=True)
@@ -54,7 +54,7 @@ class OrderItem(models.Model):
         max_length=22,
         default=shortuuid.uuid,
         editable=False,
-        unique=True
+        unique=True,
     )
     order = models.ForeignKey(Order, related_name="items", on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True)
@@ -71,10 +71,7 @@ class OrderItem(models.Model):
         return price * quantity
 
     class Meta:
-        ordering = ['-id']
-
-
-
+        ordering = ["-id"]
 
 
 # Create your models here.

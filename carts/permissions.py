@@ -1,5 +1,6 @@
 from rest_framework import permissions
 
+
 class CartPermission(permissions.BasePermission):
     """
     Custom permission for cart API.
@@ -11,6 +12,3 @@ class CartPermission(permissions.BasePermission):
         if view.__class__.__name__ in ["CheckoutAPIView", "MergeCartAPIView"]:
             return request.user and request.user.is_authenticated
         return True
-
-
-

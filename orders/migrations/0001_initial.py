@@ -11,33 +11,97 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('product', '0013_alter_category_id_alter_product_id'),
+        ("product", "0013_alter_category_id_alter_product_id"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Order',
+            name="Order",
             fields=[
-                ('id', models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True)),
-                ('total', models.DecimalField(decimal_places=2, default=0.0, max_digits=12)),
-                ('status', models.CharField(choices=[('PENDING', 'Pending'), ('PAID', 'Paid'), ('SHIPPED', 'Shipped'), ('COMPLETED', 'Completed'), ('CANCELLED', 'Cancelled')], default='PENDING', max_length=20)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('shipping_address', models.TextField(blank=True, null=True)),
-                ('payment_method', models.CharField(blank=True, max_length=50, null=True)),
-                ('user', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.CharField(
+                        default=shortuuid.main.ShortUUID.uuid,
+                        editable=False,
+                        max_length=22,
+                        primary_key=True,
+                        serialize=False,
+                        unique=True,
+                    ),
+                ),
+                (
+                    "total",
+                    models.DecimalField(decimal_places=2, default=0.0, max_digits=12),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("PENDING", "Pending"),
+                            ("PAID", "Paid"),
+                            ("SHIPPED", "Shipped"),
+                            ("COMPLETED", "Completed"),
+                            ("CANCELLED", "Cancelled"),
+                        ],
+                        default="PENDING",
+                        max_length=20,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("shipping_address", models.TextField(blank=True, null=True)),
+                (
+                    "payment_method",
+                    models.CharField(blank=True, max_length=50, null=True),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='OrderItem',
+            name="OrderItem",
             fields=[
-                ('id', models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True)),
-                ('quantity', models.PositiveIntegerField(default=1)),
-                ('price_snapshot', models.DecimalField(decimal_places=2, max_digits=10)),
-                ('subtotal', models.DecimalField(decimal_places=2, max_digits=12)),
-                ('order', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='items', to='orders.order')),
-                ('product', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, to='product.product')),
+                (
+                    "id",
+                    models.CharField(
+                        default=shortuuid.main.ShortUUID.uuid,
+                        editable=False,
+                        max_length=22,
+                        primary_key=True,
+                        serialize=False,
+                        unique=True,
+                    ),
+                ),
+                ("quantity", models.PositiveIntegerField(default=1)),
+                (
+                    "price_snapshot",
+                    models.DecimalField(decimal_places=2, max_digits=10),
+                ),
+                ("subtotal", models.DecimalField(decimal_places=2, max_digits=12)),
+                (
+                    "order",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="items",
+                        to="orders.order",
+                    ),
+                ),
+                (
+                    "product",
+                    models.ForeignKey(
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        to="product.product",
+                    ),
+                ),
             ],
         ),
     ]

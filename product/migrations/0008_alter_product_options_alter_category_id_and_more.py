@@ -7,32 +7,46 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('product', '0007_alter_category_id_alter_product_id_and_more'),
+        ("product", "0007_alter_category_id_alter_product_id_and_more"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='product',
-            options={'ordering': ['-created_at']},
+            name="product",
+            options={"ordering": ["-created_at"]},
         ),
         migrations.AlterField(
-            model_name='category',
-            name='id',
-            field=models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True),
+            model_name="category",
+            name="id",
+            field=models.CharField(
+                default=shortuuid.main.ShortUUID.uuid,
+                editable=False,
+                max_length=22,
+                primary_key=True,
+                serialize=False,
+                unique=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='category',
-            name='slug',
+            model_name="category",
+            name="slug",
             field=models.SlugField(blank=True, unique=True),
         ),
         migrations.AlterField(
-            model_name='product',
-            name='id',
-            field=models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True),
+            model_name="product",
+            name="id",
+            field=models.CharField(
+                default=shortuuid.main.ShortUUID.uuid,
+                editable=False,
+                max_length=22,
+                primary_key=True,
+                serialize=False,
+                unique=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='product',
-            name='slug',
+            model_name="product",
+            name="slug",
             field=models.SlugField(blank=True, unique=True),
         ),
     ]

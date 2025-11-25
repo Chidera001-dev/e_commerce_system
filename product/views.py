@@ -1,22 +1,24 @@
-from rest_framework import status, permissions, filters, generics
-from rest_framework.views import APIView 
-from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
-from drf_yasg.utils import swagger_auto_schema
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import Product, Category
-from .serializers import ProductSerializer, CategorySerializer
-from .permissions import IsAdminOrVendor
-from .filters import ProductFilter
+from drf_yasg.utils import swagger_auto_schema
+from rest_framework import filters, generics, permissions, status
 from rest_framework.pagination import LimitOffsetPagination
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
+from .filters import ProductFilter
+from .models import Category, Product
+from .permissions import IsAdminOrVendor
+from .serializers import CategorySerializer, ProductSerializer
 
 # ---------------------- CATEGORY VIEWS ----------------------
+
 
 class PublicCategoryListAPIView(APIView):
     """
     Public: list all categories
     """
+
     permission_classes = [permissions.AllowAny]
 
     @swagger_auto_schema(
@@ -34,6 +36,7 @@ class PublicCategoryDetailAPIView(APIView):
     """
     Public: retrieve category by slug
     """
+
     permission_classes = [permissions.AllowAny]
 
     @swagger_auto_schema(
@@ -51,6 +54,7 @@ class CategoryListCreateAPIView(APIView):
     """
     Admin/Vendor: list or create categories (internal)
     """
+
     permission_classes = [IsAdminOrVendor]
 
     @swagger_auto_schema(
@@ -81,6 +85,7 @@ class CategoryDetailAPIView(APIView):
     """
     Admin/Vendor: retrieve/update/delete category via UUID (internal)
     """
+
     permission_classes = [IsAdminOrVendor]
 
     def get_object(self, id):
@@ -126,6 +131,7 @@ class CategoryDetailAPIView(APIView):
 
 # ---------------------- PRODUCT VIEWS ----------------------
 
+
 class PublicProductListAPIView(generics.ListAPIView):
     """
     Public endpoint:
@@ -135,14 +141,18 @@ class PublicProductListAPIView(generics.ListAPIView):
         /api/public/products/?search=iphone
         /api/public/products/?ordering=-price
     """
-    
+
     serializer_class = ProductSerializer
     permission_classes = [permissions.AllowAny]
 
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [
+        DjangoFilterBackend,
+        filters.SearchFilter,
+        filters.OrderingFilter,
+    ]
     filterset_class = ProductFilter
-    search_fields = ['name', 'description']
-    ordering_fields = ['price', 'created_at']
+    search_fields = ["name", "description"]
+    ordering_fields = ["price", "created_at"]
     pagination_class = LimitOffsetPagination
 
     def get_queryset(self):
@@ -161,6 +171,7 @@ class PublicProductDetailAPIView(APIView):
     """
     Public: retrieve product by slug
     """
+
     permission_classes = [permissions.AllowAny]
 
     @swagger_auto_schema(
@@ -178,6 +189,7 @@ class ProductListCreateAPIView(APIView):
     """
     Admin/Vendor: list or create products (internal)
     """
+
     permission_classes = [IsAdminOrVendor]
 
     @swagger_auto_schema(
@@ -186,7 +198,7 @@ class ProductListCreateAPIView(APIView):
         responses={200: ProductSerializer(many=True)},
     )
     def get(self, request):
-        products = Product.objects.all().order_by('-created_at')
+        products = Product.objects.all().order_by("-created_at")
         serializer = ProductSerializer(products, many=True)
         return Response(serializer.data)
 
@@ -208,6 +220,7 @@ class ProductDetailAPIView(APIView):
     """
     Admin/Vendor: retrieve/update/delete product via UUID (internal)
     """
+
     permission_classes = [IsAdminOrVendor]
 
     def get_object(self, id):
@@ -249,7 +262,6 @@ class ProductDetailAPIView(APIView):
         self.check_object_permissions(request, product)
         product.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-
 
 
 # Create your views here.
