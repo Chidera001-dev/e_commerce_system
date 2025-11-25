@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from drf_yasg.utils import swagger_auto_schema
 
 from .models import Cart, CartItem
-from orders.models import Order
+from orders.models import Order, OrderItem
 
 from product.models import Product
 from .permissions import CartPermission
@@ -271,53 +271,81 @@ class CartViewSet(viewsets.ViewSet):
             status=status.HTTP_200_OK
         )
 
-      # ------------------- CHECKOUT -------------------
+   # ------------------- CHECKOUT -------------------
     @swagger_auto_schema(
         operation_summary="Checkout",
         operation_description=(
-            "Initiate checkout for authenticated users (generates Paystack payment reference). "
-            "Guest must register/login to checkout."
+            "Checkout for authenticated users. Converts cart → order and "
+            "initializes payment using order-based reference."
         ),
-        responses={200: "Payment reference created"}
+        responses={200: "Order created and payment URL returned"}
     )
     @action(detail=False, methods=["post"])
     def checkout(self, request):
         from orders.views import initialize_transaction
-        if not request.user.is_authenticated:
-            return Response({"error": "Login required"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Get active cart
+        if not request.user.is_authenticated:
+            return Response({"error": "Login required"}, status=401)
+
+        # Get user active cart
         cart = Cart.objects.filter(user=request.user, is_active=True).first()
         if not cart or not cart.items.exists():
             return Response({"error": "Cart is empty"}, status=400)
 
-        # Create pending order
+        # Calculate total
         total_amount = sum(item.subtotal for item in cart.items.all())
+
+        # Create order
         order = Order.objects.create(
             user=request.user,
             total=total_amount,
             status="pending",
-            payment_status="pending"
+            payment_status="pending",
+            cart=cart  
         )
 
-        # Generate Paystack reference
-        reference = f"CART-{cart.id}"
+        # Transfer cart items into OrderItems
+        order_items = [
+            OrderItem(
+                order=order,
+                product=item.product,
+                quantity=item.quantity,
+                price_snapshot=item.price_snapshot
+            )
+            for item in cart.items.all()
+        ]
+        OrderItem.objects.bulk_create(order_items)
 
-        # Initialize Paystack transaction
-        paystack_resp = initialize_transaction(request.user.email, cart.total, reference)
+    # Optionally, clear the cart in DB
+        cart.items.all().delete()
+        cart.is_active = False
+        cart.save()
 
-        if paystack_resp["status"]:
-            return Response({
-                "order_id": order.id,
-                "authorization_url": paystack_resp["data"]["authorization_url"],
-                "access_code": paystack_resp["data"]["access_code"],
-                "reference": reference
-            }, status=200)
 
-        return Response(
-            {"error": paystack_resp.get("message", "Payment initialization failed")},
-            status=400
+        # Order-based reference only
+        reference = f"ORD-{order.id}"
+
+        # Initialize Paystack with order.total
+        paystack_resp = initialize_transaction(
+            request.user.email,
+            int(order.total),
+            reference
         )
+
+        if not paystack_resp["status"]:
+            return Response(
+                {"error": paystack_resp.get("message", "Payment initialization failed")},
+                status=400
+            )
+
+        # Return payment details
+        return Response({
+            "order_id": order.id,
+            "authorization_url": paystack_resp["data"]["authorization_url"],
+            "access_code": paystack_resp["data"]["access_code"],
+            "reference": reference
+        }, status=200)
+
     # ------------------- LOAD CART -------------------
     
     def load_cart(self, request):

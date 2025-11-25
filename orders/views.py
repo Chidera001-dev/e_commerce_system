@@ -1,10 +1,18 @@
+import hashlib
+import hmac
+import json
+from django.conf import settings
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Order
+from carts.celery_tasks import process_order_after_payment
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
 
-from .models import Order
 from .serializers import OrderSerializer
 from .permissions import IsOwnerOrAdmin
 from .pagination import OrderPagination
@@ -61,57 +69,52 @@ class OrderMarkShippedAPIView(APIView):
         order.save()
         return Response({"message": f"Order {order.id} marked as shipped"}, status=status.HTTP_200_OK)
 
-# ---------------- PAYSTACK INITIALIZE ----------------
-class PaystackInitializeAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    @swagger_auto_schema(
-        operation_summary="Initialize Paystack Payment",
-        operation_description="Generate authorization URL for frontend to redirect user for payment."
-    )
-    def post(self, request, order_id):
-        order = get_object_or_404(Order, id=order_id, user=request.user)
-        reference = f"ORD-{order.id}"
-        response = initialize_transaction(order.user.email, order.total, reference)
-
-        if response['status']:
-            return Response({
-                "authorization_url": response['data']['authorization_url'],
-                "access_code": response['data']['access_code'],
-                "reference": reference
-            }, status=200)
-        return Response({"error": response['message']}, status=400)
-
-# ---------------- PAYMENT WEBHOOK ----------------
+# ---------------- PAYSTACK WEBHOOK ----------------
 class PaymentWebhookAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
+    @swagger_auto_schema(
+        operation_summary="Paystack Payment Webhook",   
+        operation_description="Endpoint to handle Paystack payment webhooks with signature validation."
+    )       
     def post(self, request):
-        payload = request.data
-        event = payload.get("event")
+        # ------------------ SIGNATURE CHECK ------------------
+        if settings.DEBUG:
+            print("DEBUG MODE: Skipping Paystack signature validation for Postman testing...")
+        else:
+            paystack_signature = request.headers.get("X-Paystack-Signature")
+            if not paystack_signature:
+                return Response({"error": "Signature missing"}, status=400)
+
+            secret_key = settings.PAYSTACK_SECRET_KEY
+            body = request.body  # raw bytes
+
+            computed_signature = hmac.new(
+                key=secret_key.encode("utf-8"),
+                msg=body,
+                digestmod=hashlib.sha512
+            ).hexdigest()
+
+            if not hmac.compare_digest(computed_signature, paystack_signature):
+                return Response({"error": "Invalid signature"}, status=400)
+
+        # ------------------ PARSE PAYLOAD ------------------
+        payload = json.loads(request.body)
         reference = payload.get("data", {}).get("reference")
-        
-        if not reference:
-            return Response({"error": "Reference missing"}, status=400)
-        
-        if not reference.startswith("CART-"):
+
+        if not reference or not reference.startswith("ORD-"):
             return Response({"error": "Invalid reference"}, status=400)
 
-        # Extract cart_id from reference
-        cart_id = reference.replace("CART-", "")
-        cart = get_object_or_404(Cart, id=cart_id)
-
-        # Find the pending order for this cart
-        order = Order.objects.filter(user=cart.user, status="pending", total=cart.total).first()
+        order_id = reference.replace("ORD-", "")
+        order = Order.objects.filter(id=order_id, payment_status="pending").first()
         if not order:
-            return Response({"error": "Order not found"}, status=400)
+            return Response({"message": "Order already processed or not found"}, status=200)
 
-        # Trigger Celery task
+        # ------------------ TRIGGER CELERY ------------------
         process_order_after_payment.delay(
-            cart_id=cart.id,
             order_id=order.id,
-            user_email=cart.user.email,
-            user_id=cart.user.id
+            user_email=order.user.email if order.user else None,
+            user_id=order.user.id if order.user else None
         )
 
         return Response({"message": "Payment verified. Order processing started."}, status=200)
