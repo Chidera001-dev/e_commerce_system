@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 import shortuuid
 from product.models import Product
+from carts.models import Cart 
 
 User = settings.AUTH_USER_MODEL
 
@@ -28,6 +29,13 @@ class Order(models.Model):
         unique=True
     )
     user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
+    cart = models.OneToOneField(
+        Cart,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="order"
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default="pending")
     total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -64,6 +72,7 @@ class OrderItem(models.Model):
 
     class Meta:
         ordering = ['-id']
+
 
 
 

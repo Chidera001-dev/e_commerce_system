@@ -4,85 +4,66 @@ from django.core.mail import send_mail
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from orders.models import Order, OrderItem
-from carts.models import Cart, CartItem
 from product.models import Product
 from carts.redis_cart import clear_cart
 
 logger = logging.getLogger(__name__)
 
 @shared_task(bind=True, max_retries=3)
-def process_order_after_payment(self, cart_id, order_id, user_email=None, user_id=None):
-    """
-    Moves CartItems to OrderItems, reduces stock, clears cart, and sends receipt email.
-    Runs only after payment is confirmed.
-    """
-    try:
-        cart = get_object_or_404(Cart, id=cart_id)
-        order = get_object_or_404(Order, id=order_id)
-        items = cart.items.select_related("product").all()
+def process_order_after_payment(self, order_id, user_email=None, user_id=None):
 
-        if not items.exists():
-            raise ValueError("Cannot process an empty cart")
+    try:
+        order = get_object_or_404(Order, id=order_id)
+
+        order_items = order.items.select_related("product").all()
+        if not order_items.exists():
+            logger.error(f"Order {order.id} has no items. Task stopped (not retrying).")
+            # mark order as error
+            order.status = "pending_items"
+            order.payment_status = "pending"
+            order.save()
+            return  
 
         with transaction.atomic():
-            order_items = []
 
-            for item in items:
+            # reduce stock
+            for item in order_items:
                 product = Product.objects.select_for_update().get(id=item.product.id)
-                
+
                 if product.stock < item.quantity:
                     raise ValueError(f"Insufficient stock for {product.name}")
 
-                # Prepare OrderItem
-                order_items.append(OrderItem(
-                    order=order,
-                    product=product,
-                    quantity=item.quantity,
-                    price_snapshot=item.price_snapshot
-                ))
-
-                # Reduce stock
                 product.stock -= item.quantity
                 product.save()
 
-            # Bulk create OrderItems
-            OrderItem.objects.bulk_create(order_items)
-
-            # Clear DB cart
-            cart.is_active = False
-            cart.items.all().delete()
-            cart.save()
-
-            # Clear Redis
+            # clear redis cart
             if user_id:
                 clear_cart(f"user:{user_id}")
 
-            # Update order status
+            # update order
             order.payment_status = "paid"
             order.status = "processing"
             order.save()
 
-        # Send confirmation email
+        # send email
         if user_email:
-            items_list = "\n".join([f"{i.product.name} x {i.quantity} = ₦{i.subtotal}" for i in items])
+            items_list = "\n".join(
+                [f"{i.product.name} x {i.quantity} = ₦{i.subtotal}" for i in order_items]
+            )
             message = f"""
-Hi {cart.user.username if cart.user else 'Customer'},
+Hi {order.user.username if order.user else 'Customer'},
 
-Thank you for your payment! Your order has been successfully processed.
+Your payment is confirmed and your order is now processing.
 
 Order ID: {order.id}
 Total Paid: ₦{order.total}
 
-Items Purchased:
+Items:
 {items_list}
 
-Your order is now being prepared for shipment. You will receive another email once it has been shipped.
-
-Thank you for shopping with us!
-
-Best regards,
-The Shop Team
+Thank you for your purchase!
             """
+
             send_mail(
                 subject=f"Payment Received - Order {order.id}",
                 message=message,
@@ -91,12 +72,9 @@ The Shop Team
                 fail_silently=False
             )
 
-        logger.info(f"Order {order.id} processed successfully for cart {cart.id}")
+        logger.info(f"Order {order.id} processed SUCCESSFULLY.")
 
     except Exception as exc:
-        logger.error(f"Failed to process order for cart {cart_id}, order {order_id}: {exc}")
-        # Retry the task up to 3 times if something goes wrong
+        logger.error(f"Failed processing order {order_id}: {exc}")
         raise self.retry(exc=exc, countdown=10)
-
-
 
