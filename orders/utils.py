@@ -3,6 +3,7 @@ from paystackapi.paystack import Paystack
 
 paystack = Paystack(secret_key=settings.PAYSTACK_SECRET_KEY)
 
+
 def initialize_transaction(email, amount, reference):
     """
     Initialize a Paystack transaction.
@@ -12,15 +13,14 @@ def initialize_transaction(email, amount, reference):
     response = paystack.transaction.initialize(
         amount=int(amount * 100),  # convert Naira to kobo
         email=email,
-        reference=reference
+        reference=reference,
     )
     return response
+
 
 def verify_transaction(reference):
     """
     Verify a Paystack transaction by its reference.
     """
     response = paystack.transaction.verify(reference)
-    return response (
-        {"message": "Payment processed successfully"}, status=200
-        )                                               
+    return response({"message": "Payment processed successfully"}, status=200)
