@@ -22,8 +22,6 @@ from .utils import initialize_transaction, verify_transaction
 paystack = Paystack(secret_key=settings.PAYSTACK_SECRET_KEY)
 
 
-
-
 # ---------------- ORDER LIST ----------------
 class OrderListAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -119,7 +117,9 @@ class PaymentWebhookAPIView(APIView):
         order_id = reference.replace("ORD-", "")
         order = Order.objects.filter(id=order_id, payment_status="pending").first()
         if not order:
-            return Response({"message": "Order already processed or not found"}, status=200)
+            return Response(
+                {"message": "Order already processed or not found"}, status=200
+            )
 
         # ------------------ VERIFY PAYMENT WITH PAYSTACK ------------------
         if settings.DEBUG:
@@ -131,16 +131,24 @@ class PaymentWebhookAPIView(APIView):
         else:
             # Production mode: verify with Paystack API
             verification = paystack.transaction.verify(reference)
-            if not verification["status"] or verification["data"]["status"] != "success":
-                return Response({"error": "Transaction could not be verified"}, status=400)
+            if (
+                not verification["status"]
+                or verification["data"]["status"] != "success"
+            ):
+                return Response(
+                    {"error": "Transaction could not be verified"}, status=400
+                )
 
-            amount_paid = verification["data"]["amount"]  # Paystack returns amount in kobo
+            amount_paid = verification["data"][
+                "amount"
+            ]  # Paystack returns amount in kobo
 
         # Validate payment amount
         order_total_kobo = int(order.total * 100)  # Convert order total to kobo
         if amount_paid != order_total_kobo:
-            return Response({"error": "Paid amount does not match order total"}, status=400)
-
+            return Response(
+                {"error": "Paid amount does not match order total"}, status=400
+            )
 
         # ------------------ TRIGGER ORDER PROCESSING ------------------
         process_order_after_payment.delay(
@@ -149,4 +157,6 @@ class PaymentWebhookAPIView(APIView):
             user_id=order.user.id if order.user else None,
         )
 
-        return Response({"message": "Payment verified. Order processing started."}, status=200)
+        return Response(
+            {"message": "Payment verified. Order processing started."}, status=200
+        )
