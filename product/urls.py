@@ -1,15 +1,10 @@
 from django.urls import path
 
 from .views import CategoryDetailAPIView  # Category Views; Product Views
-from .views import (
-    CategoryListCreateAPIView,
-    ProductDetailAPIView,
-    ProductListCreateAPIView,
-    PublicCategoryDetailAPIView,
-    PublicCategoryListAPIView,
-    PublicProductDetailAPIView,
-    PublicProductListAPIView,
-)
+from .views import (CategoryListCreateAPIView, ProductDetailAPIView,
+                    ProductListCreateAPIView, PublicCategoryDetailAPIView,
+                    PublicCategoryListAPIView, PublicProductDetailAPIView,
+                    PublicProductListAPIView)
 
 urlpatterns = [
     # ---------------------- PUBLIC CATEGORY ----------------------

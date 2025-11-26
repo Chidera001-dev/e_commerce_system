@@ -1,11 +1,7 @@
 from django.urls import path
 
-from .views import (
-    OrderDetailAPIView,
-    OrderListAPIView,
-    OrderMarkShippedAPIView,
-    PaymentWebhookAPIView,
-)
+from .views import (OrderDetailAPIView, OrderListAPIView,
+                    OrderMarkShippedAPIView, PaymentWebhookAPIView)
 
 urlpatterns = [
     path("orders/list/", OrderListAPIView.as_view(), name="order-list"),

@@ -5,6 +5,7 @@ import json
 from django.conf import settings
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
+from paystackapi.paystack import Paystack
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -17,6 +18,10 @@ from .pagination import OrderPagination
 from .permissions import IsOwnerOrAdmin
 from .serializers import OrderSerializer
 from .utils import initialize_transaction, verify_transaction
+
+paystack = Paystack(secret_key=settings.PAYSTACK_SECRET_KEY)
+
+
 
 
 # ---------------- ORDER LIST ----------------
@@ -110,26 +115,38 @@ class PaymentWebhookAPIView(APIView):
         if not reference or not reference.startswith("ORD-"):
             return Response({"error": "Invalid reference"}, status=400)
 
+        # Extract order ID from reference
         order_id = reference.replace("ORD-", "")
         order = Order.objects.filter(id=order_id, payment_status="pending").first()
         if not order:
-            return Response(
-                {"message": "Order already processed or not found"}, status=200
-            )
-        
-         #  MATCH ORDER USING STORED REFERENCE
-        try:
-            order = Order.objects.get(reference=reference, payment_status="pending")
-        except Order.DoesNotExist:
             return Response({"message": "Order already processed or not found"}, status=200)
 
-        # ------------------ TRIGGER CELERY ------------------
+        # ------------------ VERIFY PAYMENT WITH PAYSTACK ------------------
+        if settings.DEBUG:
+            # Development mode: skip actual Paystack verification
+            amount_paid = payload.get("data", {}).get("amount")
+            # You can even ignore the amount or just trust the payload for testing
+            if not amount_paid:
+                amount_paid = int(order.total * 100)  # default to order total in kobo
+        else:
+            # Production mode: verify with Paystack API
+            verification = paystack.transaction.verify(reference)
+            if not verification["status"] or verification["data"]["status"] != "success":
+                return Response({"error": "Transaction could not be verified"}, status=400)
+
+            amount_paid = verification["data"]["amount"]  # Paystack returns amount in kobo
+
+        # Validate payment amount
+        order_total_kobo = int(order.total * 100)  # Convert order total to kobo
+        if amount_paid != order_total_kobo:
+            return Response({"error": "Paid amount does not match order total"}, status=400)
+
+
+        # ------------------ TRIGGER ORDER PROCESSING ------------------
         process_order_after_payment.delay(
             order_id=order.id,
             user_email=order.user.email if order.user else None,
             user_id=order.user.id if order.user else None,
         )
 
-        return Response(
-            {"message": "Payment verified. Order processing started."}, status=200
-        )
+        return Response({"message": "Payment verified. Order processing started."}, status=200)
