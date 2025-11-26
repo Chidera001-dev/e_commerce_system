@@ -346,6 +346,9 @@ class CartViewSet(viewsets.ViewSet):
         # Order-based reference only
         reference = f"ORD-{order.id}"
 
+        order.reference = reference
+        order.save()
+
         # Initialize Paystack with order.total
         paystack_resp = initialize_transaction(
             request.user.email, int(order.total), reference

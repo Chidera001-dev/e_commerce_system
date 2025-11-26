@@ -116,6 +116,12 @@ class PaymentWebhookAPIView(APIView):
             return Response(
                 {"message": "Order already processed or not found"}, status=200
             )
+        
+         #  MATCH ORDER USING STORED REFERENCE
+        try:
+            order = Order.objects.get(reference=reference, payment_status="pending")
+        except Order.DoesNotExist:
+            return Response({"message": "Order already processed or not found"}, status=200)
 
         # ------------------ TRIGGER CELERY ------------------
         process_order_after_payment.delay(
