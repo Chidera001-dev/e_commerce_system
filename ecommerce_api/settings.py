@@ -120,9 +120,12 @@ CACHES = {
     }
 }
 
-
+# Paystack API Keys
 PAYSTACK_PUBLIC_KEY = config("PAYSTACK_PUBLIC_KEY")
 PAYSTACK_SECRET_KEY = config("PAYSTACK_SECRET_KEY")
+
+# Shippo API Key
+SHIPPO_API_KEY = config('SHIPPO_API_KEY')
 
 # Use Redis for session storage
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
