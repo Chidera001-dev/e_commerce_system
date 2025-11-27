@@ -6,6 +6,8 @@ from rest_framework.response import Response
 
 from orders.models import Order, OrderItem
 from product.models import Product
+from services.shipping_service import calculate_shipping_fee
+from orders.views import initialize_transaction
 
 from .celery_tasks import process_order_after_payment
 from .models import Cart, CartItem
@@ -293,19 +295,17 @@ class CartViewSet(viewsets.ViewSet):
             {"message": "Cart merged successfully"}, status=status.HTTP_200_OK
         )
 
-    # ------------------- CHECKOUT -------------------
+   # ------------------- CHECKOUT -------------------
     @swagger_auto_schema(
         operation_summary="Checkout",
         operation_description=(
-            "Checkout for authenticated users. Converts cart → order and "
-            "initializes payment using order-based reference."
+            "Checkout for authenticated users. Converts cart → order, "
+            "calculates shipping fee, and initializes payment using order reference."
         ),
         responses={200: "Order created and payment URL returned"},
     )
     @action(detail=False, methods=["post"])
     def checkout(self, request):
-        from orders.views import initialize_transaction
-
         if not request.user.is_authenticated:
             return Response({"error": "Login required"}, status=401)
 
@@ -314,16 +314,50 @@ class CartViewSet(viewsets.ViewSet):
         if not cart or not cart.items.exists():
             return Response({"error": "Cart is empty"}, status=400)
 
-        # Calculate total
-        total_amount = sum(item.subtotal for item in cart.items.all())
+        # Extract shipping info from request
+        shipping_data = request.data.get("shipping", {})
+        required_fields = [
+            "full_name",
+            "phone",
+            "address",
+            "city",
+            "state",
+            "country",
+            "postal_code",
+        ]
+        for field in required_fields:
+            if field not in shipping_data:
+                return Response(
+                    {"error": f"Missing shipping field: {field}"}, status=400
+                )
+
+        # Calculate subtotal
+        subtotal = sum(item.subtotal for item in cart.items.all())
+
+        # Calculate shipping fee via shipping service
+        shipping_fee = calculate_shipping_fee(
+            cart_items=cart.items.all(),
+            shipping_address=shipping_data
+        )
+
+        # Total amount including shipping
+        total_amount = subtotal + shipping_fee
 
         # Create order
         order = Order.objects.create(
             user=request.user,
+            cart=cart,
             total=total_amount,
             status="pending",
             payment_status="pending",
-            cart=cart,
+            shipping_full_name=shipping_data["full_name"],
+            shipping_phone=shipping_data["phone"],
+            shipping_address=shipping_data["address"],
+            shipping_city=shipping_data["city"],
+            shipping_state=shipping_data["state"],
+            shipping_country=shipping_data["country"],
+            shipping_postal_code=shipping_data["postal_code"],
+            shipping_cost=shipping_fee,
         )
 
         # Transfer cart items into OrderItems
@@ -338,39 +372,35 @@ class CartViewSet(viewsets.ViewSet):
         ]
         OrderItem.objects.bulk_create(order_items)
 
-        # Optionally, clear the cart in DB
+            # Optionally, clear the cart
         cart.items.all().delete()
         cart.is_active = False
         cart.save()
 
-        # Order-based reference only
+        # Create order reference
         reference = f"ORD-{order.id}"
-
         order.reference = reference
         order.save()
 
-        # Initialize Paystack with order.total
+        # Initialize payment
         paystack_resp = initialize_transaction(
             request.user.email, int(order.total), reference
         )
-
         if not paystack_resp["status"]:
             return Response(
-                {
-                    "error": paystack_resp.get(
-                        "message", "Payment initialization failed"
-                    )
-                },
+                {"error": paystack_resp.get("message", "Payment initialization failed")},
                 status=400,
             )
 
-        # Return payment details
+        # Return response
         return Response(
             {
                 "order_id": order.id,
                 "authorization_url": paystack_resp["data"]["authorization_url"],
                 "access_code": paystack_resp["data"]["access_code"],
                 "reference": reference,
+                "shipping_cost": shipping_fee,
+                "total_amount": total_amount,
             },
             status=200,
         )

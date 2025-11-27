@@ -27,6 +27,7 @@ urlpatterns = [
     path("api/", include("product.urls")),
     path("api/", include("carts.urls")),
     path("api/", include("orders.urls")),
+    path("api/", include("services.urls")),
     # Swagger docs
     path(
         "swagger/",

@@ -15,6 +15,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from decouple import config
+import shippo
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -46,6 +47,8 @@ INSTALLED_APPS = [
     "product.apps.ProductConfig",
     "carts.apps.CartsConfig",
     "orders.apps.OrdersConfig",
+    "services.apps.ServicesConfig",
+
     # third party apps
     "rest_framework",
     "django_filters",
@@ -123,6 +126,7 @@ CACHES = {
 # Paystack API Keys
 PAYSTACK_PUBLIC_KEY = config("PAYSTACK_PUBLIC_KEY")
 PAYSTACK_SECRET_KEY = config("PAYSTACK_SECRET_KEY")
+
 
 # Shippo API Key
 SHIPPO_API_KEY = config('SHIPPO_API_KEY')
