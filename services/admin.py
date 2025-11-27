@@ -1,6 +1,6 @@
 from django.contrib import admin
-from django.contrib import admin
-from .models import ShippingAddress, Shipment
+
+from .models import Shipment, ShippingAddress
 
 
 @admin.register(ShippingAddress)
@@ -16,7 +16,14 @@ class ShippingAddressAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     )
-    search_fields = ("full_name", "phone_number", "city", "state", "country", "order__id")
+    search_fields = (
+        "full_name",
+        "phone_number",
+        "city",
+        "state",
+        "country",
+        "order__id",
+    )
     list_filter = ("country", "state", "city", "created_at")
     readonly_fields = ("id", "created_at", "updated_at")
 

@@ -1,9 +1,10 @@
 import os
-import services.shipping_service as shipping_service
 from decimal import Decimal
-from django.conf import settings
-from orders.models import Order
 
+from django.conf import settings
+
+import services.shipping_service as shipping_service
+from orders.models import Order
 
 # Initialize Shippo API key
 SHIPPO_API_KEY = os.getenv("SHIPPO_API_KEY", settings.SHIPPO_API_KEY)
@@ -63,9 +64,7 @@ def create_shipment(order: Order):
     try:
         # Create shipment
         shipment = shipping_service.Shipment.create(
-            address_from=from_address,
-            address_to=to_address,
-            parcels=[parcel]
+            address_from=from_address, address_to=to_address, parcels=[parcel]
         )
 
         #  Extract shipping rates
@@ -78,8 +77,7 @@ def create_shipment(order: Order):
 
         #  Purchase shipping label (transaction)
         transaction = shipping_service.Transaction.create(
-            rate=selected_rate["object_id"],
-            label_file_type="PDF"
+            rate=selected_rate["object_id"], label_file_type="PDF"
         )
 
         if transaction["status"] != "SUCCESS":
@@ -91,7 +89,9 @@ def create_shipment(order: Order):
             "label_url": transaction.get("label_url"),
             "status": "ready_for_pickup",
             "provider": "Shippo",
-            "shipping_cost": Decimal(selected_rate.get("amount_local", selected_rate.get("amount")))  # NGN safe
+            "shipping_cost": Decimal(
+                selected_rate.get("amount_local", selected_rate.get("amount"))
+            ),  # NGN safe
         }
 
     except Exception as e:
@@ -137,9 +137,7 @@ def create_shipment_label(shipment):
     try:
         # Create new shipment for this label
         shipment_obj = shipping_service.Shipment.create(
-            address_from=from_address,
-            address_to=to_address,
-            parcels=[parcel]
+            address_from=from_address, address_to=to_address, parcels=[parcel]
         )
 
         rates = shipment_obj.get("rates", [])
@@ -151,8 +149,7 @@ def create_shipment_label(shipment):
 
         #  Buy label
         transaction = shipping_service.Transaction.create(
-            rate=selected_rate["object_id"],
-            label_file_type="PDF"
+            rate=selected_rate["object_id"], label_file_type="PDF"
         )
 
         if transaction["status"] != "SUCCESS":

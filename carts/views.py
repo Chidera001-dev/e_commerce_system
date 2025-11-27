@@ -5,9 +5,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from orders.models import Order, OrderItem
+from orders.views import initialize_transaction
 from product.models import Product
 from services.shipping_service import calculate_shipping_fee
-from orders.views import initialize_transaction
 
 from .celery_tasks import process_order_after_payment
 from .models import Cart, CartItem
@@ -295,7 +295,7 @@ class CartViewSet(viewsets.ViewSet):
             {"message": "Cart merged successfully"}, status=status.HTTP_200_OK
         )
 
-   # ------------------- CHECKOUT -------------------
+    # ------------------- CHECKOUT -------------------
     @swagger_auto_schema(
         operation_summary="Checkout",
         operation_description=(
@@ -336,8 +336,7 @@ class CartViewSet(viewsets.ViewSet):
 
         # Calculate shipping fee via shipping service
         shipping_fee = calculate_shipping_fee(
-            cart_items=cart.items.all(),
-            shipping_address=shipping_data
+            cart_items=cart.items.all(), shipping_address=shipping_data
         )
 
         # Total amount including shipping
@@ -372,7 +371,7 @@ class CartViewSet(viewsets.ViewSet):
         ]
         OrderItem.objects.bulk_create(order_items)
 
-            # Optionally, clear the cart
+        # Optionally, clear the cart
         cart.items.all().delete()
         cart.is_active = False
         cart.save()
@@ -388,7 +387,11 @@ class CartViewSet(viewsets.ViewSet):
         )
         if not paystack_resp["status"]:
             return Response(
-                {"error": paystack_resp.get("message", "Payment initialization failed")},
+                {
+                    "error": paystack_resp.get(
+                        "message", "Payment initialization failed"
+                    )
+                },
                 status=400,
             )
 

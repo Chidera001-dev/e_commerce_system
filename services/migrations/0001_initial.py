@@ -10,48 +10,112 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('orders', '0006_alter_order_id_alter_orderitem_id'),
+        ("orders", "0006_alter_order_id_alter_orderitem_id"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Shipment',
+            name="Shipment",
             fields=[
-                ('id', models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True)),
-                ('shipping_method', models.CharField(choices=[('standard', 'Standard'), ('express', 'Express')], default='standard', max_length=20)),
-                ('shipping_fee', models.DecimalField(decimal_places=2, default=0, max_digits=10)),
-                ('delivery_status', models.CharField(choices=[('pending', 'Pending'), ('processing', 'Processing'), ('dispatched', 'Dispatched'), ('in_transit', 'In Transit'), ('delivered', 'Delivered'), ('cancelled', 'Cancelled')], default='pending', max_length=20)),
-                ('tracking_number', models.CharField(blank=True, max_length=50, null=True)),
-                ('estimated_delivery_date', models.DateField(blank=True, null=True)),
-                ('courier_name', models.CharField(default='Shippo', max_length=50)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('order', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='shipment', to='orders.order')),
+                (
+                    "id",
+                    models.CharField(
+                        default=shortuuid.main.ShortUUID.uuid,
+                        editable=False,
+                        max_length=22,
+                        primary_key=True,
+                        serialize=False,
+                        unique=True,
+                    ),
+                ),
+                (
+                    "shipping_method",
+                    models.CharField(
+                        choices=[("standard", "Standard"), ("express", "Express")],
+                        default="standard",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "shipping_fee",
+                    models.DecimalField(decimal_places=2, default=0, max_digits=10),
+                ),
+                (
+                    "delivery_status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "Pending"),
+                            ("processing", "Processing"),
+                            ("dispatched", "Dispatched"),
+                            ("in_transit", "In Transit"),
+                            ("delivered", "Delivered"),
+                            ("cancelled", "Cancelled"),
+                        ],
+                        default="pending",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "tracking_number",
+                    models.CharField(blank=True, max_length=50, null=True),
+                ),
+                ("estimated_delivery_date", models.DateField(blank=True, null=True)),
+                ("courier_name", models.CharField(default="Shippo", max_length=50)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "order",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="shipment",
+                        to="orders.order",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Shipment',
-                'verbose_name_plural': 'Shipments',
+                "verbose_name": "Shipment",
+                "verbose_name_plural": "Shipments",
             },
         ),
         migrations.CreateModel(
-            name='ShippingAddress',
+            name="ShippingAddress",
             fields=[
-                ('id', models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True)),
-                ('full_name', models.CharField(max_length=150)),
-                ('phone_number', models.CharField(max_length=20)),
-                ('address_line1', models.CharField(max_length=255)),
-                ('address_line2', models.CharField(blank=True, max_length=255, null=True)),
-                ('city', models.CharField(max_length=100)),
-                ('state', models.CharField(max_length=100)),
-                ('postal_code', models.CharField(blank=True, max_length=20, null=True)),
-                ('country', models.CharField(default='Nigeria', max_length=50)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('order', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='shipping_addresses', to='orders.order')),
+                (
+                    "id",
+                    models.CharField(
+                        default=shortuuid.main.ShortUUID.uuid,
+                        editable=False,
+                        max_length=22,
+                        primary_key=True,
+                        serialize=False,
+                        unique=True,
+                    ),
+                ),
+                ("full_name", models.CharField(max_length=150)),
+                ("phone_number", models.CharField(max_length=20)),
+                ("address_line1", models.CharField(max_length=255)),
+                (
+                    "address_line2",
+                    models.CharField(blank=True, max_length=255, null=True),
+                ),
+                ("city", models.CharField(max_length=100)),
+                ("state", models.CharField(max_length=100)),
+                ("postal_code", models.CharField(blank=True, max_length=20, null=True)),
+                ("country", models.CharField(default="Nigeria", max_length=50)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "order",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="shipping_addresses",
+                        to="orders.order",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Shipping Address',
-                'verbose_name_plural': 'Shipping Addresses',
+                "verbose_name": "Shipping Address",
+                "verbose_name_plural": "Shipping Addresses",
             },
         ),
     ]

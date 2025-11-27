@@ -7,8 +7,11 @@ from rest_framework.views import APIView
 
 from .models import Profile, User
 from .permissions import IsAdminUser, IsOwnerOrAdmin
-from .serializers import (CustomUserCreateSerializer,
-                          CustomUserUpdateSerializer, ProfileSerializer)
+from .serializers import (
+    CustomUserCreateSerializer,
+    CustomUserUpdateSerializer,
+    ProfileSerializer,
+)
 
 # ------------------ USER VIEWS ------------------
 

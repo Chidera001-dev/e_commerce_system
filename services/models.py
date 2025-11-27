@@ -1,5 +1,6 @@
 import shortuuid
 from django.db import models
+
 from orders.models import Order
 
 
@@ -7,17 +8,16 @@ class ShippingAddress(models.Model):
     """
     Stores delivery address for an order.
     """
+
     id = models.CharField(
         primary_key=True,
         max_length=22,
         default=shortuuid.uuid,
         editable=False,
-        unique=True
+        unique=True,
     )
     order = models.OneToOneField(
-        Order,
-         on_delete=models.CASCADE,
-         related_name="shipping_addresses"  
+        Order, on_delete=models.CASCADE, related_name="shipping_addresses"
     )
     full_name = models.CharField(max_length=150)
     phone_number = models.CharField(max_length=20)
@@ -43,6 +43,7 @@ class Shipment(models.Model):
     """
     Stores shipping details and tracking info, specifically for Shippo.
     """
+
     STATUS_CHOICES = [
         ("pending", "Pending"),
         ("processing", "Processing"),
@@ -62,7 +63,7 @@ class Shipment(models.Model):
         max_length=22,
         default=shortuuid.uuid,
         editable=False,
-        unique=True
+        unique=True,
     )
     order = models.OneToOneField(
         Order, related_name="shipment", on_delete=models.CASCADE

@@ -1,6 +1,7 @@
 import shortuuid
 from django.conf import settings
 from django.db import models
+
 from carts.models import Cart
 from product.models import Product
 
@@ -97,15 +98,23 @@ class Order(models.Model):
     shipping_address = models.TextField(null=True, blank=True)
     shipping_city = models.CharField(max_length=100, null=True, blank=True)
     shipping_state = models.CharField(max_length=100, null=True, blank=True)
-    shipping_country = models.CharField(max_length=100, default="Nigeria", null=True, blank=True)
+    shipping_country = models.CharField(
+        max_length=100, default="Nigeria", null=True, blank=True
+    )
     shipping_postal_code = models.CharField(max_length=20, null=True, blank=True)
 
     # Provider fields
     shipping_provider = models.CharField(max_length=100, null=True, blank=True)
-    shipping_tracking_number = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    shipping_tracking_number = models.CharField(
+        max_length=100, null=True, blank=True, db_index=True
+    )
     shipping_label_url = models.URLField(null=True, blank=True)
-    shipping_status = models.CharField(max_length=50, null=True, blank=True, db_index=True)
-    shipping_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    shipping_status = models.CharField(
+        max_length=50, null=True, blank=True, db_index=True
+    )
+    shipping_cost = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -136,7 +145,9 @@ class OrderItem(models.Model):
         unique=True,
     )
     order = models.ForeignKey(Order, related_name="items", on_delete=models.CASCADE)
-    product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, related_name="order_items")
+    product = models.ForeignKey(
+        Product, on_delete=models.SET_NULL, null=True, related_name="order_items"
+    )
     quantity = models.PositiveIntegerField(default=1)
     price_snapshot = models.DecimalField(
         max_digits=10,
@@ -156,7 +167,6 @@ class OrderItem(models.Model):
         ordering = ["-id"]
         verbose_name = "Order Item"
         verbose_name_plural = "Order Items"
-
 
 
 # Create your models here.

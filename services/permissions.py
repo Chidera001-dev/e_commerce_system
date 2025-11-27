@@ -1,5 +1,6 @@
 from rest_framework import permissions
 
+
 class IsOwnerOrReadOnly(permissions.BasePermission):
     """
     Custom permission: only the user associated with the order can view or edit shipping/shipment.
@@ -11,4 +12,4 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
             return True
 
         # Only the owner of the order can modify
-        return hasattr(obj, 'order') and obj.order.user == request.user
+        return hasattr(obj, "order") and obj.order.user == request.user
