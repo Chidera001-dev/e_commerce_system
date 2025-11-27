@@ -1,4 +1,5 @@
 from django.contrib import admin
+
 from .models import Order, OrderItem
 
 
@@ -49,30 +50,30 @@ class OrderAdmin(admin.ModelAdmin):
     )
 
     fieldsets = (
-        ("Order Info", {
-            "fields": ("user", "cart", "total", "status", "payment_status")
-        }),
-        ("Payment", {
-            "fields": ("payment_method", "transaction_id")
-        }),
-        ("Shipping", {
-            "fields": (
-                "shipping_provider",
-                "shipping_cost",
-                "shipping_full_name",
-                "shipping_phone",
-                "shipping_address",
-                "shipping_city",
-                "shipping_state",
-                "shipping_country",
-                "shipping_postal_code",
-                "shipping_tracking_number",
-                "shipping_status",
-            )
-        }),
-        ("Dates", {
-            "fields": ("created_at", "updated_at")
-        }),
+        (
+            "Order Info",
+            {"fields": ("user", "cart", "total", "status", "payment_status")},
+        ),
+        ("Payment", {"fields": ("payment_method", "transaction_id")}),
+        (
+            "Shipping",
+            {
+                "fields": (
+                    "shipping_provider",
+                    "shipping_cost",
+                    "shipping_full_name",
+                    "shipping_phone",
+                    "shipping_address",
+                    "shipping_city",
+                    "shipping_state",
+                    "shipping_country",
+                    "shipping_postal_code",
+                    "shipping_tracking_number",
+                    "shipping_status",
+                )
+            },
+        ),
+        ("Dates", {"fields": ("created_at", "updated_at")}),
     )
 
     inlines = [OrderItemInline]
@@ -99,8 +100,6 @@ class OrderAdmin(admin.ModelAdmin):
                 "shipping_status",
             )
         return self.readonly_fields
-
-
 
 
 # Register your models here.

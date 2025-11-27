@@ -14,8 +14,8 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
-from decouple import config
 import shippo
+from decouple import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -48,7 +48,6 @@ INSTALLED_APPS = [
     "carts.apps.CartsConfig",
     "orders.apps.OrdersConfig",
     "services.apps.ServicesConfig",
-
     # third party apps
     "rest_framework",
     "django_filters",
@@ -129,7 +128,7 @@ PAYSTACK_SECRET_KEY = config("PAYSTACK_SECRET_KEY")
 
 
 # Shippo API Key
-SHIPPO_API_KEY = config('SHIPPO_API_KEY')
+SHIPPO_API_KEY = config("SHIPPO_API_KEY")
 
 # Use Redis for session storage
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"

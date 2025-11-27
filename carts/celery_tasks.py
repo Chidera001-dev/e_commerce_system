@@ -1,4 +1,5 @@
 import logging
+
 from celery import shared_task
 from django.core.mail import send_mail
 from django.db import transaction
@@ -11,6 +12,7 @@ from services.models import Shipment
 from services.shipping_service import create_shipment  # Your Shippo helper
 
 logger = logging.getLogger(__name__)
+
 
 @shared_task(bind=True, max_retries=3)
 def process_order_after_payment(self, order_id, user_email=None, user_id=None):
@@ -72,7 +74,9 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
             order.shipping_provider = shipment.courier_name
             order.save()
 
-            logger.info(f"Shipment created for Order {order.id}: {shipment.tracking_number}")
+            logger.info(
+                f"Shipment created for Order {order.id}: {shipment.tracking_number}"
+            )
         except Exception as ship_exc:
             logger.error(f"Failed creating shipment for Order {order.id}: {ship_exc}")
 
@@ -81,7 +85,10 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
         # -----------------------------
         if user_email:
             items_list = "\n".join(
-                [f"{i.product.name} x {i.quantity} = ₦{i.subtotal}" for i in order_items]
+                [
+                    f"{i.product.name} x {i.quantity} = ₦{i.subtotal}"
+                    for i in order_items
+                ]
             )
             message = f"""
 Hi {order.user.username if order.user else 'Customer'},
