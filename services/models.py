@@ -18,7 +18,7 @@ class ShippingAddress(models.Model):
         unique=True,
     )
     order = models.OneToOneField(
-        Order, on_delete=models.CASCADE, related_name="shipping_address"
+        Order, on_delete=models.CASCADE, related_name="order_shippingaddress"
     )
     full_name = models.CharField(max_length=150)
     phone = models.CharField(max_length=20)
@@ -70,7 +70,9 @@ class Shipment(models.Model):
         unique=True,
     )
     order = models.OneToOneField(
-        Order, related_name="shipment", on_delete=models.CASCADE
+        Order, 
+         on_delete=models.CASCADE,
+         related_name="order_shipment" 
     )
     shipping_address = models.OneToOneField(
         ShippingAddress, on_delete=models.SET_NULL, null=True, blank=True

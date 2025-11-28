@@ -8,7 +8,7 @@ class ShippingAddressAdmin(admin.ModelAdmin):
         "id",
         "order",
         "full_name",
-        "phone_number",
+        "phone",
         "city",
         "state",
         "country",
@@ -17,7 +17,7 @@ class ShippingAddressAdmin(admin.ModelAdmin):
     )
     search_fields = (
         "full_name",
-        "phone_number",
+        "phone",
         "city",
         "state",
         "country",
@@ -26,7 +26,7 @@ class ShippingAddressAdmin(admin.ModelAdmin):
     list_filter = ("country", "state", "city", "created_at")
     readonly_fields = ("id", "created_at", "updated_at")
     fieldsets = (
-        (None, {"fields": ("order", "full_name", "phone_number")}),
+        (None, {"fields": ("order", "full_name", "phone")}),
         ("Address", {"fields": ("address_line1", "address_line2", "city", "state", "postal_code", "country")}),
         ("Timestamps", {"fields": ("created_at", "updated_at")}),
     )
