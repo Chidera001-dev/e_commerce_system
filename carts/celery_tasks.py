@@ -21,8 +21,8 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
     - Reduce stock
     - Clear Redis cart
     - Update order status & payment status
-    - Create shipment record via Shippo
-    - Send email with order + shipping details
+    - Create shipment via Shippo asynchronously
+    - Send confirmation email with tracking info
     """
     try:
         order = get_object_or_404(Order, id=order_id)
@@ -36,7 +36,7 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
             return
 
         with transaction.atomic():
-            # Reduce stock
+            # Reduce stock for each item
             for item in order_items:
                 product = Product.objects.select_for_update().get(id=item.product.id)
                 if product.stock < item.quantity:
@@ -44,22 +44,22 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
                 product.stock -= item.quantity
                 product.save()
 
-            # Clear Redis cart
+            # Clear Redis cart if user_id provided
             if user_id:
                 clear_cart(f"user:{user_id}")
 
-            # Update order payment & status
+            # Update order payment and status
             order.payment_status = "paid"
             order.status = "processing"
             order.save()
 
         # -----------------------------
-        # Shipping integration
+        # Async Shipment creation
         # -----------------------------
         try:
             shipment_info = create_shipment(order)
 
-            # Create Shipment record
+            # Create Shipment record in DB
             shipment = Shipment.objects.create(
                 order=order,
                 shipping_fee=order.shipping_cost,
@@ -78,7 +78,7 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
                 f"Shipment created for Order {order.id}: {shipment.tracking_number}"
             )
         except Exception as ship_exc:
-            logger.error(f"Failed creating shipment for Order {order.id}: {ship_exc}")
+            logger.error(f"Shipment creation failed for Order {order.id}: {ship_exc}")
 
         # -----------------------------
         # Send confirmation email
@@ -93,7 +93,7 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
             message = f"""
 Hi {order.user.username if order.user else 'Customer'},
 
-Your payment is confirmed and your order is now processing.
+Your payment has been confirmed, and your order is now processing.
 
 Order ID: {order.id}
 Total Paid: ₦{order.total}
@@ -121,8 +121,9 @@ Thank you for your purchase!
                 fail_silently=False,
             )
 
-        logger.info(f"Order {order.id} processed SUCCESSFULLY.")
+        logger.info(f"Order {order.id} processed successfully.")
 
     except Exception as exc:
         logger.error(f"Failed processing order {order_id}: {exc}")
+        # Retry task in 10 seconds
         raise self.retry(exc=exc, countdown=10)

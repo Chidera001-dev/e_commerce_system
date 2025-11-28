@@ -1,5 +1,4 @@
 from django.contrib import admin
-
 from .models import Shipment, ShippingAddress
 
 
@@ -26,6 +25,11 @@ class ShippingAddressAdmin(admin.ModelAdmin):
     )
     list_filter = ("country", "state", "city", "created_at")
     readonly_fields = ("id", "created_at", "updated_at")
+    fieldsets = (
+        (None, {"fields": ("order", "full_name", "phone_number")}),
+        ("Address", {"fields": ("address_line1", "address_line2", "city", "state", "postal_code", "country")}),
+        ("Timestamps", {"fields": ("created_at", "updated_at")}),
+    )
 
 
 @admin.register(Shipment)
@@ -44,7 +48,13 @@ class ShipmentAdmin(admin.ModelAdmin):
     )
     search_fields = ("order__id", "tracking_number", "courier_name")
     list_filter = ("delivery_status", "shipping_method", "courier_name", "created_at")
-    readonly_fields = ("id", "created_at", "updated_at")
+    readonly_fields = ("id", "created_at", "updated_at", "tracking_number", "courier_name", "estimated_delivery_date")
+
+    fieldsets = (
+        (None, {"fields": ("order", "shipping_method", "shipping_fee")}),
+        ("Status & Tracking", {"fields": ("delivery_status", "tracking_number", "courier_name", "estimated_delivery_date")}),
+        ("Timestamps", {"fields": ("created_at", "updated_at")}),
+    )
 
 
 # Register your models here.

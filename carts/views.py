@@ -8,8 +8,7 @@ from orders.models import Order, OrderItem
 from orders.views import initialize_transaction
 from product.models import Product
 from services.shipping_service import calculate_shipping_fee
-
-from .celery_tasks import process_order_after_payment
+from .celery_tasks import process_order_after_payment as process_order_shipment
 from .models import Cart, CartItem
 from .permissions import CartPermission
 from .redis_cart import clear_cart
@@ -294,13 +293,13 @@ class CartViewSet(viewsets.ViewSet):
         return Response(
             {"message": "Cart merged successfully"}, status=status.HTTP_200_OK
         )
-
     # ------------------- CHECKOUT -------------------
     @swagger_auto_schema(
         operation_summary="Checkout",
         operation_description=(
             "Checkout for authenticated users. Converts cart → order, "
-            "calculates shipping fee, and initializes payment using order reference."
+            "calculates shipping fee, and initializes payment using order reference. "
+            "Shipment creation is handled asynchronously after payment."
         ),
         responses={200: "Order created and payment URL returned"},
     )
@@ -331,15 +330,9 @@ class CartViewSet(viewsets.ViewSet):
                     {"error": f"Missing shipping field: {field}"}, status=400
                 )
 
-        # Calculate subtotal
+        # Calculate subtotal and shipping
         subtotal = sum(item.subtotal for item in cart.items.all())
-
-        # Calculate shipping fee via shipping service
-        shipping_fee = calculate_shipping_fee(
-            cart_items=cart.items.all(), shipping_address=shipping_data
-        )
-
-        # Total amount including shipping
+        shipping_fee = calculate_shipping_fee(cart_items=cart.items.all(), shipping_address=shipping_data)
         total_amount = subtotal + shipping_fee
 
         # Create order
@@ -371,7 +364,7 @@ class CartViewSet(viewsets.ViewSet):
         ]
         OrderItem.objects.bulk_create(order_items)
 
-        # Optionally, clear the cart
+        #  clear the cart
         cart.items.all().delete()
         cart.is_active = False
         cart.save()
@@ -387,15 +380,15 @@ class CartViewSet(viewsets.ViewSet):
         )
         if not paystack_resp["status"]:
             return Response(
-                {
-                    "error": paystack_resp.get(
-                        "message", "Payment initialization failed"
-                    )
-                },
+                {"error": paystack_resp.get("message", "Payment initialization failed")},
                 status=400,
             )
 
-        # Return response
+        # Enqueue async shipment creation via Celery
+        # Shipment creation (tracking, label generation) will happen after payment confirmation
+        process_order_shipment.delay(order.id)
+
+        # Return checkout response
         return Response(
             {
                 "order_id": order.id,
@@ -404,6 +397,10 @@ class CartViewSet(viewsets.ViewSet):
                 "reference": reference,
                 "shipping_cost": shipping_fee,
                 "total_amount": total_amount,
+                "message": (
+                    "Checkout initialized. Shipment will be created asynchronously "
+                    "once payment is confirmed. Tracking info will be sent via email."
+                ),
             },
             status=200,
         )
