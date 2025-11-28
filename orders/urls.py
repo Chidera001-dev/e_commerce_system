@@ -3,7 +3,6 @@ from django.urls import path
 from .views import (
     OrderDetailAPIView,
     OrderListAPIView,
-    OrderMarkShippedAPIView,
     PaymentWebhookAPIView,
 )
 
@@ -14,11 +13,7 @@ urlpatterns = [
         OrderDetailAPIView.as_view(),
         name="order-detail",
     ),
-    path(
-        "orders/mark-shipped/<str:order_id>/",
-        OrderMarkShippedAPIView.as_view(),
-        name="order-mark-shipped",
-    ),
+   
     path(
         "orders/paystack/webhook/",
         PaymentWebhookAPIView.as_view(),

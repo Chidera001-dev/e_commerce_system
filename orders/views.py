@@ -59,24 +59,6 @@ class OrderDetailAPIView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-# ---------------- MARK SHIPPED ----------------
-class OrderMarkShippedAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]
-
-    @swagger_auto_schema(
-        operation_summary="Mark Order as Shipped",
-        operation_description="Admin endpoint to mark an order as shipped.",
-    )
-    def post(self, request, order_id):
-        order = get_object_or_404(Order, id=order_id)
-        order.status = "shipped"
-        order.save()
-        return Response(
-            {"message": f"Order {order.id} marked as shipped"},
-            status=status.HTTP_200_OK,
-        )
-
-
 # ---------------- PAYSTACK WEBHOOK ----------------
 class PaymentWebhookAPIView(APIView):
     permission_classes = [permissions.AllowAny]
