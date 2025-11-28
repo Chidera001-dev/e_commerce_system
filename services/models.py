@@ -1,14 +1,15 @@
 import shortuuid
 from django.db import models
-
 from orders.models import Order
 
-
+# -------------------------------
+# Shipping Address
+# -------------------------------
 class ShippingAddress(models.Model):
     """
     Stores delivery address for an order.
+    One-to-one relationship with Order.
     """
-
     id = models.CharField(
         primary_key=True,
         max_length=22,
@@ -17,12 +18,12 @@ class ShippingAddress(models.Model):
         unique=True,
     )
     order = models.OneToOneField(
-        Order, on_delete=models.CASCADE, related_name="shipping_addresses"
+        Order, on_delete=models.CASCADE, related_name="shipping_address"
     )
     full_name = models.CharField(max_length=150)
-    phone_number = models.CharField(max_length=20)
-    address_line1 = models.CharField(max_length=255)
-    address_line2 = models.CharField(max_length=255, blank=True, null=True)
+    phone = models.CharField(max_length=20)
+    address = models.CharField(max_length=255)
+    address2 = models.CharField(max_length=255, blank=True, null=True)
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=100)
     postal_code = models.CharField(max_length=20, blank=True, null=True)
@@ -39,11 +40,14 @@ class ShippingAddress(models.Model):
         return f"{self.full_name} - {self.city}"
 
 
+# -------------------------------
+# Shipment
+# -------------------------------
 class Shipment(models.Model):
     """
-    Stores shipping details and tracking info, specifically for Shippo.
+    Stores shipping details, tracking info, and status for Shippo integration.
+    Each order has one shipment.
     """
-
     STATUS_CHOICES = [
         ("pending", "Pending"),
         ("processing", "Processing"),
@@ -68,6 +72,9 @@ class Shipment(models.Model):
     order = models.OneToOneField(
         Order, related_name="shipment", on_delete=models.CASCADE
     )
+    shipping_address = models.OneToOneField(
+        ShippingAddress, on_delete=models.SET_NULL, null=True, blank=True
+    )
     shipping_method = models.CharField(
         max_length=20, choices=SHIPPING_METHOD_CHOICES, default="standard"
     )
@@ -78,6 +85,7 @@ class Shipment(models.Model):
     tracking_number = models.CharField(max_length=50, blank=True, null=True)
     estimated_delivery_date = models.DateField(blank=True, null=True)
     courier_name = models.CharField(max_length=50, default="Shippo")  # Only Shippo
+    label_created = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -88,3 +96,4 @@ class Shipment(models.Model):
 
     def __str__(self):
         return f"{self.order.id} - {self.delivery_status}"
+

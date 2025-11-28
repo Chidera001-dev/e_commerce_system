@@ -1,7 +1,6 @@
 import shortuuid
 from django.conf import settings
 from django.db import models
-
 from carts.models import Cart
 from product.models import Product
 
@@ -26,7 +25,6 @@ class Order(models.Model):
         ("refunded", "Refunded"),
     ]
 
-    # Primary ID
     id = models.CharField(
         primary_key=True,
         max_length=22,
@@ -52,45 +50,12 @@ class Order(models.Model):
     )
 
     # Payment
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default="pending",
-        db_index=True,
-    )
-    payment_status = models.CharField(
-        max_length=20,
-        choices=PAYMENT_STATUS_CHOICES,
-        default="pending",
-        db_index=True,
-    )
-    reference = models.CharField(
-        max_length=50,
-        null=True,
-        blank=True,
-        help_text="Internal order reference (for Paystack/Rave)",
-        db_index=True,
-    )
-    transaction_id = models.CharField(
-        max_length=100,
-        null=True,
-        blank=True,
-        unique=True,
-        help_text="Transaction reference from payment gateway",
-    )
-    payment_method = models.CharField(
-        max_length=50,
-        null=True,
-        blank=True,
-        help_text="E.g. paystack, flutterwave, bank_transfer",
-    )
-
-    total = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0,
-        help_text="Order total including product cost + shipping",
-    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending", db_index=True)
+    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default="pending", db_index=True)
+    reference = models.CharField(max_length=50, null=True, blank=True, db_index=True)
+    transaction_id = models.CharField(max_length=100, null=True, blank=True, unique=True)
+    payment_method = models.CharField(max_length=50, null=True, blank=True)
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     # Shipping Info
     shipping_full_name = models.CharField(max_length=100, null=True, blank=True)
@@ -98,27 +63,32 @@ class Order(models.Model):
     shipping_address = models.TextField(null=True, blank=True)
     shipping_city = models.CharField(max_length=100, null=True, blank=True)
     shipping_state = models.CharField(max_length=100, null=True, blank=True)
-    shipping_country = models.CharField(
-        max_length=100, default="Nigeria", null=True, blank=True
-    )
+    shipping_country = models.CharField(max_length=100, default="Nigeria", null=True, blank=True)
     shipping_postal_code = models.CharField(max_length=20, null=True, blank=True)
 
     # Provider fields
     shipping_provider = models.CharField(max_length=100, null=True, blank=True)
-    shipping_tracking_number = models.CharField(
-        max_length=100, null=True, blank=True, db_index=True
-    )
+    shipping_tracking_number = models.CharField(max_length=100, null=True, blank=True, db_index=True)
     shipping_label_url = models.URLField(null=True, blank=True)
-    shipping_status = models.CharField(
-        max_length=50, null=True, blank=True, db_index=True
-    )
-    shipping_cost = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True
-    )
+    shipping_status = models.CharField(max_length=50, null=True, blank=True, db_index=True)
+    shipping_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    shipment_created = models.BooleanField(default=False, help_text="Set to True when shipment is created via Celery")
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # Helper property
+    @property
+    def full_shipping_address(self):
+        parts = [
+            self.shipping_address,
+            self.shipping_city,
+            self.shipping_state,
+            self.shipping_postal_code,
+            self.shipping_country,
+        ]
+        return ", ".join(filter(None, parts))
 
     def __str__(self):
         return f"Order {self.id}"
@@ -145,16 +115,9 @@ class OrderItem(models.Model):
         unique=True,
     )
     order = models.ForeignKey(Order, related_name="items", on_delete=models.CASCADE)
-    product = models.ForeignKey(
-        Product, on_delete=models.SET_NULL, null=True, related_name="order_items"
-    )
+    product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, related_name="order_items")
     quantity = models.PositiveIntegerField(default=1)
-    price_snapshot = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=0,
-        help_text="Price of product when order was created",
-    )
+    price_snapshot = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     @property
     def subtotal(self):

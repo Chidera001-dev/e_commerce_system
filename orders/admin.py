@@ -23,6 +23,7 @@ class OrderAdmin(admin.ModelAdmin):
         "shipping_provider",
         "shipping_status",
         "shipping_tracking_number",
+        "shipment_created", 
         "created_at",
     )
 

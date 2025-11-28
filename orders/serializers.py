@@ -1,7 +1,5 @@
 from rest_framework import serializers
-
 from product.serializers import ProductSerializer
-
 from .models import Order, OrderItem
 
 
@@ -23,6 +21,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
+    shipment_created = serializers.BooleanField(read_only=True)  # new field
 
     class Meta:
         model = Order
@@ -49,6 +48,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "shipping_label_url",
             "shipping_status",
             "shipping_cost",
+            "shipment_created",
             # Timestamps
             "created_at",
             "updated_at",
@@ -66,4 +66,5 @@ class OrderSerializer(serializers.ModelSerializer):
             "reference",
             "transaction_id",
             "payment_status",
+            "shipment_created",
         ]
