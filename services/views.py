@@ -9,25 +9,27 @@ from .pagination import ServiceOffsetPagination
 from .permissions import IsOwnerOrReadOnly , IsAdminOrReadOnly
 from .shipping_service import calculate_shipping_fee, create_shipment_label
 
-
 # -------------------------------
 # Shipping Address Views
 # -------------------------------
 class ShippingAddressListCreateAPIView(generics.ListCreateAPIView):
     """
     List all shipping addresses or create a new one for the authenticated user.
+    Users can create multiple addresses; one of them will be used at checkout.
     """
     serializer_class = ShippingAddressSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = ServiceOffsetPagination
 
     def get_queryset(self):
-        return ShippingAddress.objects.filter(order__user=self.request.user).order_by(
-            "-created_at"
-        )
+        # List all shipping addresses belonging to the authenticated user
+        return ShippingAddress.objects.filter(order__user=self.request.user).order_by("-created_at")
 
     def perform_create(self, serializer):
-        # Link the shipping address to the user's order later, if needed
+        """
+        Save the shipping address. It doesn't need to be attached to an order yet;
+        the checkout will pick an existing address by its ID.
+        """
         serializer.save()
 
 
@@ -123,7 +125,7 @@ class CreateShipmentLabelAPIView(APIView):
             shipment.shipping_tracking_number = tracking_number
             shipment.estimated_delivery_date = estimated_delivery
             shipment.shipping_fee = calculate_shipping_fee(shipment)
-            shipment.shipping_status = "in_transit"  # optional
+            shipment.shipping_status = "in_transit"  
             shipment.save()
         except Exception as e:
             return Response(

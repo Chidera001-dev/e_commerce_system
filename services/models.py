@@ -18,8 +18,14 @@ class ShippingAddress(models.Model):
         unique=True,
     )
     order = models.OneToOneField(
-        Order, on_delete=models.CASCADE, related_name="order_shippingaddress"
-    )
+    Order,
+    on_delete=models.CASCADE,
+    related_name="shipping_address_service",
+    null=True,
+    blank=True
+)
+
+    
     full_name = models.CharField(max_length=150)
     phone = models.CharField(max_length=20)
     address = models.CharField(max_length=255)
