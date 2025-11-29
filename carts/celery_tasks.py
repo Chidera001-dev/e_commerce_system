@@ -62,11 +62,19 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
             # Create Shipment record in DB
             shipment = Shipment.objects.create(
                 order=order,
+                shipping_full_name=order.shipping_full_name,
+                shipping_phone=order.shipping_phone,
+                shipping_address_text=order.shipping_address_text,  
+                shipping_city=order.shipping_city,
+                shipping_state=order.shipping_state,
+                shipping_country=order.shipping_country,
+                shipping_postal_code=order.shipping_postal_code,
                 shipping_fee=order.shipping_cost,
                 delivery_status=shipment_info.get("status", "pending"),
                 tracking_number=shipment_info.get("tracking_number"),
                 courier_name=shipment_info.get("provider", "Shippo"),
-            )
+        )
+
 
             # Update order shipping fields
             order.shipping_tracking_number = shipment.tracking_number

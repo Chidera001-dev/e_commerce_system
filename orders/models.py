@@ -4,6 +4,7 @@ from django.db import models
 from carts.models import Cart
 from product.models import Product
 
+
 User = settings.AUTH_USER_MODEL
 
 
@@ -48,7 +49,7 @@ class Order(models.Model):
         on_delete=models.SET_NULL,
         related_name="order",
     )
-
+    
     # Payment
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending", db_index=True)
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default="pending", db_index=True)
@@ -60,8 +61,8 @@ class Order(models.Model):
     # Shipping Info
     shipping_full_name = models.CharField(max_length=100, null=True, blank=True)
     shipping_phone = models.CharField(max_length=20, null=True, blank=True)
-    shipping_address = models.TextField(null=True, blank=True)
     shipping_city = models.CharField(max_length=100, null=True, blank=True)
+    shipping_address_text = models.CharField(max_length=255, null=True, blank=True)
     shipping_state = models.CharField(max_length=100, null=True, blank=True)
     shipping_country = models.CharField(max_length=100, default="Nigeria", null=True, blank=True)
     shipping_postal_code = models.CharField(max_length=20, null=True, blank=True)
@@ -82,7 +83,7 @@ class Order(models.Model):
     @property
     def full_shipping_address(self):
         parts = [
-            self.shipping_address,
+            self.shipping_address_text,
             self.shipping_city,
             self.shipping_state,
             self.shipping_postal_code,

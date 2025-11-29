@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from orders.models import Order, OrderItem
 from orders.views import initialize_transaction
 from product.models import Product
-from services.models import ShippingAddress
+from services.models import ShippingAddress, Shipment
 from services.shipping_service import calculate_shipping_fee
 from .celery_tasks import process_order_after_payment as process_order_shipment
 from .models import Cart, CartItem
@@ -294,54 +294,55 @@ class CartViewSet(viewsets.ViewSet):
         return Response(
             {"message": "Cart merged successfully"}, status=status.HTTP_200_OK
         )
-    # ------------------- CHECKOUT -------------------
+   # ------------------- CHECKOUT -------------------
     @swagger_auto_schema(
         operation_summary="Checkout cart",
         operation_description=(
             "Create an order from the current cart, calculate totals, "
             "initialize payment, and enqueue shipment creation."
-        ),
+            ),
         responses={200: "Checkout initialized successfully"},
     )
     @action(detail=False, methods=["post"])
     def checkout(self, request):
-        order.shipping_address = ShippingAddress.objects.get(id=shipping_address_id)
-        order.save()
-
+        # Ensure user is authenticated
         if not request.user.is_authenticated:
             return Response({"error": "Login required"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Get user active cart
+        # Get active cart
         cart = Cart.objects.filter(user=request.user, is_active=True).first()
         if not cart or not cart.items.exists():
             return Response({"error": "Cart is empty"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Extract shipping_address_id
+        # Extract shipping_address_id from request
         shipping_address_id = request.data.get("shipping_address_id")
         if not shipping_address_id:
             return Response({"error": "shipping_address_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Get ShippingAddress
+        # Retrieve ShippingAddress belonging to user
         try:
             shipping_address = ShippingAddress.objects.get(id=shipping_address_id, order__user=request.user)
         except ShippingAddress.DoesNotExist:
             return Response({"error": "Shipping address not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Calculate subtotal and shipping
+        # Calculate subtotal & shipping fee
         subtotal = sum(item.subtotal for item in cart.items.all())
         shipping_fee = calculate_shipping_fee(cart_items=cart.items.all(), shipping_address=shipping_address)
         total_amount = subtotal + shipping_fee
 
-        # Create order
+        # --- CREATE ORDER using snapshot fields ---
         order = Order.objects.create(
             user=request.user,
             cart=cart,
             total=total_amount,
             status="pending",
             payment_status="pending",
+
+            # Snapshots from ShippingAddress
+            
             shipping_full_name=shipping_address.full_name,
             shipping_phone=shipping_address.phone,
-            order_shipping_address_field=shipping_address.address,
+            shipping_address_text=shipping_address.address,
             shipping_city=shipping_address.city,
             shipping_state=shipping_address.state,
             shipping_country=shipping_address.country,
@@ -350,7 +351,7 @@ class CartViewSet(viewsets.ViewSet):
         )
 
         # Transfer cart items into OrderItems
-        order_items = [
+        OrderItem.objects.bulk_create([
             OrderItem(
                 order=order,
                 product=item.product,
@@ -358,8 +359,7 @@ class CartViewSet(viewsets.ViewSet):
                 price_snapshot=item.price_snapshot,
             )
             for item in cart.items.all()
-        ]
-        OrderItem.objects.bulk_create(order_items)
+        ])
 
         # Clear the cart
         cart.items.all().delete()
@@ -367,38 +367,49 @@ class CartViewSet(viewsets.ViewSet):
         cart.save()
 
         # Create order reference
-        reference = f"ORD-{order.id}"
-        order.reference = reference
+        order.reference = f"ORD-{order.id}"
         order.save()
 
         # Initialize Paystack payment
-        paystack_resp = initialize_transaction(request.user.email, int(order.total), reference)
-        if not paystack_resp["status"]:
+        paystack_resp = initialize_transaction(request.user.email, int(order.total), order.reference)
+        if not paystack_resp.get("status"):
             return Response(
                 {"error": paystack_resp.get("message", "Payment initialization failed")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Enqueue async shipment creation via Celery after payment
+        # --- CREATE SHIPMENT from order snapshots ---
+        Shipment.objects.create(
+            order=order,
+            shipping_full_name=order.shipping_full_name,
+            shipping_phone=order.shipping_phone,
+            shipping_address_text=order.shipping_address_text,
+            shipping_city=order.shipping_city,
+            shipping_state=order.shipping_state,
+            shipping_country=order.shipping_country,
+            shipping_postal_code=order.shipping_postal_code,
+            shipping_fee=order.shipping_cost,
+        )
+
+        # Optionally, enqueue async shipment task via Celery
         process_order_shipment.delay(order.id)
 
         # Return checkout response
         return Response(
             {
                 "order_id": order.id,
-                "authorization_url": paystack_resp["data"]["authorization_url"],
-                "access_code": paystack_resp["data"]["access_code"],
-                "reference": reference,
+                "reference": order.reference,
                 "shipping_cost": shipping_fee,
                 "total_amount": total_amount,
+                "authorization_url": paystack_resp["data"]["authorization_url"],
+                "access_code": paystack_resp["data"]["access_code"],
                 "message": (
-                    "Checkout initialized. Shipment will be created asynchronously "
-                    "once payment is confirmed. Tracking info will be sent via email."
+                    "Checkout initialized. Shipment created from order snapshot. "
+                    "Tracking info will be sent after payment confirmation."
                 ),
             },
             status=status.HTTP_200_OK,
         )
-
 
     # ------------------- LOAD CART -------------------
 
