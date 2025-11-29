@@ -7,17 +7,17 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('carts', '0003_alter_cart_id_alter_cartitem_id'),
+        ('product', '0018_alter_category_id_alter_product_id'),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='cart',
+            model_name='category',
             name='id',
             field=models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True),
         ),
         migrations.AlterField(
-            model_name='cartitem',
+            model_name='product',
             name='id',
             field=models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True),
         ),
