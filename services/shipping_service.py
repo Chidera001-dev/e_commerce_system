@@ -9,7 +9,7 @@ from .models import Shipment, ShippingAddress
 SHIPPO_API_KEY = os.getenv("SHIPPO_API_KEY", settings.SHIPPO_API_KEY)
 shipping_service.api_key = SHIPPO_API_KEY
 
-def calculate_shipping_fee(cart_items=None):
+def calculate_shipping_fee(cart_items=None, shipping_address=None):
     """Simple shipping fee calculator based on items count."""
     base_fee = Decimal("500.00")
     per_item_fee = Decimal("100.00")
@@ -18,7 +18,7 @@ def calculate_shipping_fee(cart_items=None):
 
 def create_shipment(shipment: Shipment):
     """Create shipment in Shippo using Shipment and ShippingAddress info."""
-    address_obj = shipment.order.shipping_addresses  # OneToOne
+    address_obj = shipment.order.shipping_addresses  
 
     to_address = {
         "name": address_obj.full_name,

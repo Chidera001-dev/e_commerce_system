@@ -1,12 +1,11 @@
 from django.contrib import admin
-
 from .models import Order, OrderItem
 
 
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
-    readonly_fields = ("product", "quantity", "price_snapshot", "subtotal")
     fields = ("product", "quantity", "price_snapshot", "subtotal")
+    readonly_fields = ("product", "quantity", "price_snapshot", "subtotal")
     extra = 0
     can_delete = False
 
@@ -23,7 +22,7 @@ class OrderAdmin(admin.ModelAdmin):
         "shipping_provider",
         "shipping_status",
         "shipping_tracking_number",
-        "shipment_created", 
+        "shipment_created",
         "created_at",
     )
 
@@ -51,10 +50,7 @@ class OrderAdmin(admin.ModelAdmin):
     )
 
     fieldsets = (
-        (
-            "Order Info",
-            {"fields": ("user", "cart", "total", "status", "payment_status")},
-        ),
+        ("Order Info", {"fields": ("user", "cart", "total", "status", "payment_status")}),
         ("Payment", {"fields": ("payment_method", "transaction_id")}),
         (
             "Shipping",
@@ -64,7 +60,7 @@ class OrderAdmin(admin.ModelAdmin):
                     "shipping_cost",
                     "shipping_full_name",
                     "shipping_phone",
-                    "shipping_address",
+                    "shipping_address_text",
                     "shipping_city",
                     "shipping_state",
                     "shipping_country",
@@ -74,12 +70,16 @@ class OrderAdmin(admin.ModelAdmin):
                 )
             },
         ),
+        ("Shipment", {"fields": ("shipment_created",)}),
         ("Dates", {"fields": ("created_at", "updated_at")}),
     )
 
     inlines = [OrderItemInline]
 
     def get_readonly_fields(self, request, obj=None):
+        """
+        Make most fields read-only after creation to prevent accidental edits.
+        """
         if obj:
             return self.readonly_fields + (
                 "user",
@@ -92,15 +92,15 @@ class OrderAdmin(admin.ModelAdmin):
                 "shipping_cost",
                 "shipping_full_name",
                 "shipping_phone",
-                "shipping_address",
+                "shipping_address_text",
                 "shipping_city",
                 "shipping_state",
                 "shipping_country",
                 "shipping_postal_code",
                 "shipping_tracking_number",
                 "shipping_status",
+                "shipment_created",
             )
         return self.readonly_fields
-
 
 # Register your models here.

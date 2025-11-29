@@ -21,7 +21,9 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
-    shipment_created = serializers.BooleanField(read_only=True)  # new field
+    shipment_created = serializers.BooleanField(read_only=True)
+
+    shipping_info = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -35,21 +37,17 @@ class OrderSerializer(serializers.ModelSerializer):
             "transaction_id",
             "reference",
             "total",
-            # Shipping fields
-            "shipping_full_name",
-            "shipping_phone",
-            "shipping_address",
-            "shipping_city",
-            "shipping_state",
-            "shipping_country",
-            "shipping_postal_code",
+
+            # consolidated shipping
+            "shipping_info",
+
             "shipping_provider",
             "shipping_tracking_number",
             "shipping_label_url",
             "shipping_status",
             "shipping_cost",
             "shipment_created",
-            # Timestamps
+
             "created_at",
             "updated_at",
             "items",
@@ -68,3 +66,14 @@ class OrderSerializer(serializers.ModelSerializer):
             "payment_status",
             "shipment_created",
         ]
+
+    def get_shipping_info(self, obj):
+        return {
+            "full_name": obj.shipping_full_name,
+            "phone": obj.shipping_phone,
+            "address": obj.shipping_address_text,   
+            "city": obj.shipping_city,
+            "state": obj.shipping_state,
+            "country": obj.shipping_country,
+            "postal_code": obj.shipping_postal_code,
+        }
