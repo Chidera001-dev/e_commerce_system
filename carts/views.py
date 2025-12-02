@@ -303,43 +303,45 @@ class CartViewSet(viewsets.ViewSet):
             ),
         responses={200: "Checkout initialized successfully"},
     )
+    # ------------------- CHECKOUT -------------------
     @action(detail=False, methods=["post"])
     def checkout(self, request):
-        # Ensure user is authenticated
         if not request.user.is_authenticated:
             return Response({"error": "Login required"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Get active cart
         cart = Cart.objects.filter(user=request.user, is_active=True).first()
         if not cart or not cart.items.exists():
             return Response({"error": "Cart is empty"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Extract shipping_address_id from request
+        # ----------------- STOCK VALIDATION -----------------
+        for item in cart.items.all():
+            if item.product.stock < item.quantity:
+                return Response(
+                    {"error": f"Insufficient stock for {item.product.name}. Available: {item.product.stock}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # ----------------- SHIPPING ADDRESS -----------------
         shipping_address_id = request.data.get("shipping_address_id")
         if not shipping_address_id:
             return Response({"error": "shipping_address_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Retrieve ShippingAddress belonging to user
         try:
-            shipping_address = ShippingAddress.objects.get(id=shipping_address_id, order__user=request.user)
+            shipping_address = ShippingAddress.objects.get(id=shipping_address_id, user=request.user)
         except ShippingAddress.DoesNotExist:
             return Response({"error": "Shipping address not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Calculate subtotal & shipping fee
+        # ----------------- ORDER CREATION -----------------
         subtotal = sum(item.subtotal for item in cart.items.all())
         shipping_fee = calculate_shipping_fee(cart_items=cart.items.all(), shipping_address=shipping_address)
         total_amount = subtotal + shipping_fee
 
-        # --- CREATE ORDER using snapshot fields ---
         order = Order.objects.create(
             user=request.user,
             cart=cart,
             total=total_amount,
             status="pending",
             payment_status="pending",
-
-            # Snapshots from ShippingAddress
-            
             shipping_full_name=shipping_address.full_name,
             shipping_phone=shipping_address.phone,
             shipping_address_text=shipping_address.address,
@@ -350,66 +352,38 @@ class CartViewSet(viewsets.ViewSet):
             shipping_cost=shipping_fee,
         )
 
-        # Transfer cart items into OrderItems
         OrderItem.objects.bulk_create([
             OrderItem(
                 order=order,
                 product=item.product,
                 quantity=item.quantity,
-                price_snapshot=item.price_snapshot,
+                price_snapshot=item.price_snapshot
             )
             for item in cart.items.all()
         ])
 
-        # Clear the cart
+        # Deactivate cart
         cart.items.all().delete()
         cart.is_active = False
         cart.save()
 
-        # Create order reference
         order.reference = f"ORD-{order.id}"
         order.save()
 
-        # Initialize Paystack payment
+        # ----------------- INITIALIZE PAYMENT -----------------
         paystack_resp = initialize_transaction(request.user.email, int(order.total), order.reference)
         if not paystack_resp.get("status"):
-            return Response(
-                {"error": paystack_resp.get("message", "Payment initialization failed")},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"error": paystack_resp.get("message", "Payment initialization failed")}, status=status.HTTP_400_BAD_REQUEST)
 
-        # --- CREATE SHIPMENT from order snapshots ---
-        Shipment.objects.create(
-            order=order,
-            shipping_full_name=order.shipping_full_name,
-            shipping_phone=order.shipping_phone,
-            shipping_address_text=order.shipping_address_text,
-            shipping_city=order.shipping_city,
-            shipping_state=order.shipping_state,
-            shipping_country=order.shipping_country,
-            shipping_postal_code=order.shipping_postal_code,
-            shipping_fee=order.shipping_cost,
-        )
-
-        # Optionally, enqueue async shipment task via Celery
-        process_order_shipment.delay(order.id)
-
-        # Return checkout response
-        return Response(
-            {
-                "order_id": order.id,
-                "reference": order.reference,
-                "shipping_cost": shipping_fee,
-                "total_amount": total_amount,
-                "authorization_url": paystack_resp["data"]["authorization_url"],
-                "access_code": paystack_resp["data"]["access_code"],
-                "message": (
-                    "Checkout initialized. Shipment created from order snapshot. "
-                    "Tracking info will be sent after payment confirmation."
-                ),
-            },
-            status=status.HTTP_200_OK,
-        )
+        return Response({
+            "order_id": order.id,
+            "reference": order.reference,
+            "shipping_cost": shipping_fee,
+            "total_amount": total_amount,
+            "authorization_url": paystack_resp["data"]["authorization_url"],
+            "access_code": paystack_resp["data"]["access_code"],
+            "message": "Checkout initialized. Payment required to process order.",
+        }, status=status.HTTP_200_OK)
 
     # ------------------- LOAD CART -------------------
 

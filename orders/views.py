@@ -62,83 +62,43 @@ class OrderDetailAPIView(APIView):
 # ---------------- PAYSTACK WEBHOOK ----------------
 class PaymentWebhookAPIView(APIView):
     permission_classes = [permissions.AllowAny]
-
     @swagger_auto_schema(
         operation_summary="Paystack Payment Webhook",
-        operation_description="Endpoint to handle Paystack payment webhooks with signature validation.",
+        operation_description="Handle Paystack payment verification webhook to update order status.",
     )
+
     def post(self, request):
-        # ------------------ SIGNATURE CHECK ------------------
-        if settings.DEBUG:
-            print(
-                "DEBUG MODE: Skipping Paystack signature validation for Postman testing..."
-            )
-        else:
-            paystack_signature = request.headers.get("X-Paystack-Signature")
-            if not paystack_signature:
+        if not settings.DEBUG:
+            signature = request.headers.get("X-Paystack-Signature")
+            if not signature:
                 return Response({"error": "Signature missing"}, status=400)
-
-            secret_key = settings.PAYSTACK_SECRET_KEY
-            body = request.body  # raw bytes
-
-            computed_signature = hmac.new(
-                key=secret_key.encode("utf-8"), msg=body, digestmod=hashlib.sha512
-            ).hexdigest()
-
-            if not hmac.compare_digest(computed_signature, paystack_signature):
+            computed_sig = hmac.new(settings.PAYSTACK_SECRET_KEY.encode(), msg=request.body, digestmod=hashlib.sha512).hexdigest()
+            if not hmac.compare_digest(signature, computed_sig):
                 return Response({"error": "Invalid signature"}, status=400)
 
-        # ------------------ PARSE PAYLOAD ------------------
         payload = json.loads(request.body)
         reference = payload.get("data", {}).get("reference")
-
         if not reference or not reference.startswith("ORD-"):
             return Response({"error": "Invalid reference"}, status=400)
 
-        # Extract order ID from reference
         order_id = reference.replace("ORD-", "")
         order = Order.objects.filter(id=order_id, payment_status="pending").first()
         if not order:
-            return Response(
-                {"message": "Order already processed or not found"}, status=200
-            )
+            return Response({"message": "Order already processed or not found"}, status=200)
 
-        # ------------------ VERIFY PAYMENT WITH PAYSTACK ------------------
+        # Verify amount
         if settings.DEBUG:
-            # Development mode: skip actual Paystack verification
-            amount_paid = payload.get("data", {}).get("amount")
-            # You can even ignore the amount or just trust the payload for testing
-            if not amount_paid:
-                amount_paid = int(order.total * 100)  # default to order total in kobo
+            amount_paid = payload.get("data", {}).get("amount") or int(order.total * 100)
         else:
-            # Production mode: verify with Paystack API
             verification = paystack.transaction.verify(reference)
-            if (
-                not verification["status"]
-                or verification["data"]["status"] != "success"
-            ):
-                return Response(
-                    {"error": "Transaction could not be verified"}, status=400
-                )
+            if not verification["status"] or verification["data"]["status"] != "success":
+                return Response({"error": "Transaction could not be verified"}, status=400)
+            amount_paid = verification["data"]["amount"]
 
-            amount_paid = verification["data"][
-                "amount"
-            ]  # Paystack returns amount in kobo
+        if amount_paid != int(order.total * 100):
+            return Response({"error": "Paid amount does not match order total"}, status=400)
 
-        # Validate payment amount
-        order_total_kobo = int(order.total * 100)  # Convert order total to kobo
-        if amount_paid != order_total_kobo:
-            return Response(
-                {"error": "Paid amount does not match order total"}, status=400
-            )
+        # Trigger Celery task
+        process_order_after_payment.delay(order_id=order.id, user_email=order.user.email if order.user else None, user_id=order.user.id if order.user else None)
 
-        # ------------------ TRIGGER ORDER PROCESSING ------------------
-        process_order_after_payment.delay(
-            order_id=order.id,
-            user_email=order.user.email if order.user else None,
-            user_id=order.user.id if order.user else None,
-        )
-
-        return Response(
-            {"message": "Payment verified. Order processing started."}, status=200
-        )
+        return Response({"message": "Payment verified. Order processing started."}, status=200)

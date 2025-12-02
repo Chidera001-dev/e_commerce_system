@@ -1,5 +1,10 @@
 import shortuuid
 from django.db import models
+from django.conf import settings
+
+User = settings.AUTH_USER_MODEL
+
+
 
 # -------------------------------
 # Shipping Address
@@ -16,7 +21,7 @@ class ShippingAddress(models.Model):
         editable=False,
         unique=True,
     )
-
+    user = models.ForeignKey(User, on_delete=models.CASCADE,null=True,blank=True)
     full_name = models.CharField(max_length=150)
     phone = models.CharField(max_length=20)
     address = models.CharField(max_length=255)

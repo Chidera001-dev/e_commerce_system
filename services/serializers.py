@@ -57,7 +57,6 @@ class ShippingAddressSerializer(serializers.ModelSerializer):
         model = ShippingAddress
         fields = [
             "id",
-            "order",
             "full_name",
             "phone",
             "address",
@@ -68,8 +67,13 @@ class ShippingAddressSerializer(serializers.ModelSerializer):
             "country",
             "created_at",
             "updated_at",
+            
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at", ]
+
+    def create(self, validated_data):
+        validated_data["user"] = self.context["request"].user  
+        return super().create(validated_data)    
 
 # -------------------------------
 # Shipment Serializer
