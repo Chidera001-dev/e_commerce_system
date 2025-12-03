@@ -81,7 +81,7 @@ class ShipmentStatusUpdateAPIView(APIView):
     """
     Update shipment status (e.g., via webhook or manually by the owner).
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrReadOnly]
 
     @swagger_auto_schema(
         operation_summary="Update Shipment Status",
@@ -106,63 +106,96 @@ class ShipmentStatusUpdateAPIView(APIView):
             {"status": "Shipment updated", "shipment": ShipmentSerializer(shipment).data},
             status=status.HTTP_200_OK,
         )
-
-# Create Shipment Label View
+    
 class CreateShipmentLabelAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminOrReadOnly]
+
     @swagger_auto_schema(
         operation_summary="Create Shipment Label",
         operation_description="Generate a shipping label and send email notification to the user.",
     )
-
     def post(self, request, shipment_id):
+        # -------------------------------------------
+        # Validate Shipment
+        # -------------------------------------------
         try:
             shipment = Shipment.objects.get(id=shipment_id)
         except Shipment.DoesNotExist:
             return Response({"error": "Shipment not found"}, status=404)
 
-        if shipment.order.payment_status != "paid":
-            return Response({"error": "Cannot create shipment for unpaid order"}, status=400)
+        order = shipment.order
 
+        if order.payment_status != "paid":
+            return Response(
+                {"error": "Cannot create shipment for unpaid order"},
+                status=400
+            )
+
+        # -------------------------------------------
+        # Create Shipment Label
+        # -------------------------------------------
         try:
-            label_url, tracking_number, estimated_delivery = create_shipment_label(shipment)
+            label_url, tracking_number, _ = create_shipment_label(shipment)
+
             shipment.shipping_label_url = label_url
             shipment.shipping_tracking_number = tracking_number
-            shipment.estimated_delivery_date = estimated_delivery
-            shipment.shipping_status = "in_transit"
+            shipment.shipping_status = "in_transit"   # Shippo does not return status
             shipment.save()
 
-            # Send email
-            user_email = shipment.order.user.email if shipment.order.user else None
+            # -------------------------------------------
+            # Send Confirmation Email
+            # -------------------------------------------
+            user = order.user
+            user_email = user.email if user else None
+
             if user_email:
-                items_list = "\n".join([f"{i.product.name} x {i.quantity} = ₦{i.subtotal}" for i in shipment.order.items.all()])
+                items_list = "\n".join([
+                    f"{i.product.name} x {i.quantity} = ₦{i.subtotal}"
+                    for i in order.items.all()
+                ])
+
                 message = f"""
-Hi {shipment.order.user.username if shipment.order.user else 'Customer'},
+Hi {user.username if user else 'Customer'},
 
 Your order has been shipped!
 
-Order ID: {shipment.order.id}
+Order ID: {order.id}
 Tracking Number: {shipment.shipping_tracking_number}
 Courier: {shipment.shipping_provider or 'Shippo'}
-Estimated Delivery: {shipment.estimated_delivery_date or 'Not available'}
+Label: {label_url}
 
 Items:
 {items_list}
 
 Shipping Address:
-{shipment.shipping_full_name}
-{shipment.shipping_address_text}, {shipment.shipping_city}, {shipment.shipping_state}, {shipment.shipping_country}
-Postal Code: {shipment.shipping_postal_code}
+{order.shipping_full_name}
+{order.shipping_address_text}, {order.shipping_city}, {order.shipping_state}, {order.shipping_country}
+Postal Code: {order.shipping_postal_code}
 
 Thank you for shopping with us!
 """
-                send_mail(subject=f"Your Order {shipment.order.id} Has Been Shipped!",
-                          message=message,
-                          from_email="no-reply@shop.com",
-                          recipient_list=[user_email],
-                          fail_silently=False)
+
+                send_mail(
+                    subject=f"Your Order {order.id} Has Been Shipped!",
+                    message=message,
+                    from_email="no-reply@shop.com",
+                    recipient_list=[user_email],
+                    fail_silently=False,
+                )
 
         except Exception as e:
-            return Response({"error": f"Failed to create shipment label or send email: {str(e)}"}, status=500)
+            return Response(
+                {"error": f"Failed to create shipment label or send email: {str(e)}"},
+                status=500
+            )
 
-        return Response({"status": "Shipment label created and email sent", "shipment": ShipmentSerializer(shipment).data}, status=200)
+        # -------------------------------------------
+        # Success Response
+        # -------------------------------------------
+        return Response(
+            {
+                "status": "Shipment label created and email sent",
+                "shipment": ShipmentSerializer(shipment).data
+            },
+            status=200
+        )

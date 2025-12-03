@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 
 from carts.celery_tasks import process_order_after_payment
 from carts.models import Cart
+from services.models import Shipment
 
 from .models import Order
 from .pagination import OrderPagination
@@ -97,6 +98,22 @@ class PaymentWebhookAPIView(APIView):
 
         if amount_paid != int(order.total * 100):
             return Response({"error": "Paid amount does not match order total"}, status=400)
+        
+        # ---------------- CREATE SHIPMENT SNAPSHOT ----------------
+        if not hasattr(order, "order_shipment"):  
+            shipment = Shipment.objects.create(
+                order=order,
+                shipping_full_name=order.shipping_full_name,
+                shipping_address_text=order.shipping_address_text,
+                shipping_city=order.shipping_city,
+                shipping_state=order.shipping_state,
+                shipping_country=order.shipping_country,
+                shipping_postal_code=order.shipping_postal_code,
+                shipping_phone=order.shipping_phone,
+                shipping_fee=order.shipping_cost,
+                delivery_status="pending", 
+            )
+
 
         # Trigger Celery task
         process_order_after_payment.delay(order_id=order.id, user_email=order.user.email if order.user else None, user_id=order.user.id if order.user else None)

@@ -299,11 +299,10 @@ class CartViewSet(viewsets.ViewSet):
         operation_summary="Checkout cart",
         operation_description=(
             "Create an order from the current cart, calculate totals, "
-            "initialize payment, and enqueue shipment creation."
-            ),
+            "initialize payment."
+        ),
         responses={200: "Checkout initialized successfully"},
     )
-    # ------------------- CHECKOUT -------------------
     @action(detail=False, methods=["post"])
     def checkout(self, request):
         if not request.user.is_authenticated:
@@ -330,6 +329,10 @@ class CartViewSet(viewsets.ViewSet):
             shipping_address = ShippingAddress.objects.get(id=shipping_address_id, user=request.user)
         except ShippingAddress.DoesNotExist:
             return Response({"error": "Shipping address not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # ----------------- CHECK FOR EXISTING ORDER -----------------
+        if Order.objects.filter(cart=cart).exists():
+            return Response({"error": "This cart has already been checked out"}, status=status.HTTP_400_BAD_REQUEST)
 
         # ----------------- ORDER CREATION -----------------
         subtotal = sum(item.subtotal for item in cart.items.all())
@@ -362,7 +365,7 @@ class CartViewSet(viewsets.ViewSet):
             for item in cart.items.all()
         ])
 
-        # Deactivate cart
+        # ----------------- DEACTIVATE CART -----------------
         cart.items.all().delete()
         cart.is_active = False
         cart.save()
