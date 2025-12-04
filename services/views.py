@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_yasg.utils import swagger_auto_schema
 from django.core.mail import send_mail
+from django.shortcuts import get_object_or_404
 
 from .models import Shipment, ShippingAddress
 from .serializers import ShipmentSerializer, ShippingAddressSerializer
@@ -112,90 +113,100 @@ class CreateShipmentLabelAPIView(APIView):
 
     @swagger_auto_schema(
         operation_summary="Create Shipment Label",
-        operation_description="Generate a shipping label and send email notification to the user.",
+        operation_description="Generate a US-only shipping label, download the PDF, and notify the customer via email."
     )
     def post(self, request, shipment_id):
-        # -------------------------------------------
-        # Validate Shipment
-        # -------------------------------------------
-        try:
-            shipment = Shipment.objects.get(id=shipment_id)
-        except Shipment.DoesNotExist:
-            return Response({"error": "Shipment not found"}, status=404)
-
+        # ---------------------------------------------------
+        # 1. Retrieve Shipment
+        # ---------------------------------------------------
+        shipment = get_object_or_404(Shipment, id=shipment_id)
         order = shipment.order
 
+        # ---------------------------------------------------
+        # 2. Validate payment status
+        # ---------------------------------------------------
         if order.payment_status != "paid":
             return Response(
-                {"error": "Cannot create shipment for unpaid order"},
-                status=400
+                {"error": "Cannot create shipment for unpaid order."},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
-        # -------------------------------------------
-        # Create Shipment Label
-        # -------------------------------------------
-        try:
-            label_url, tracking_number, _ = create_shipment_label(shipment)
+        # ---------------------------------------------------
+        # 3. Enforce US-only shipment
+        # ---------------------------------------------------
+        if order.shipping_country != "US":
+            return Response(
+                {"error": "Shipping label creation is restricted to US-only shipments."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-            shipment.shipping_label_url = label_url
-            shipment.shipping_tracking_number = tracking_number
-            shipment.shipping_status = "in_transit"   # Shippo does not return status
+        # ---------------------------------------------------
+        # 4. Generate the label via Shippo
+        # ---------------------------------------------------
+        try:
+            label_data = create_shipment_label(order=order, shipment=shipment)
+
+            shipment.shipping_label_url = label_data.get("label_url")
+            shipment.shipping_tracking_number = label_data.get("tracking_number")
+            shipment.delivery_status = label_data.get("status", "in_transit")
+            shipment.courier_name = label_data.get("carrier", "Shippo")
+            shipment.label_created = True
             shipment.save()
 
-            # -------------------------------------------
-            # Send Confirmation Email
-            # -------------------------------------------
-            user = order.user
-            user_email = user.email if user else None
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to create shipment label: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-            if user_email:
-                items_list = "\n".join([
-                    f"{i.product.name} x {i.quantity} = ₦{i.subtotal}"
-                    for i in order.items.all()
-                ])
+        # ---------------------------------------------------
+        # 5. Send Email Notification
+        # ---------------------------------------------------
+        user = order.user
+        if user and user.email:
+            currency_symbol = "₦" if getattr(order, "currency", "NGN").upper() == "NGN" else "$"
+            items_list = "\n".join([
+                f"• {item.product.name} x{item.quantity} — {currency_symbol}{item.subtotal}"
+                for item in order.items.all()
+            ])
 
-                message = f"""
-Hi {user.username if user else 'Customer'},
+            email_body = f"""
+Hello {user.username},
 
 Your order has been shipped!
 
 Order ID: {order.id}
 Tracking Number: {shipment.shipping_tracking_number}
-Courier: {shipment.shipping_provider or 'Shippo'}
-Label: {label_url}
+Courier: {shipment.courier_name}
+Shipping Label: {shipment.shipping_label_url}
 
 Items:
 {items_list}
 
-Shipping Address:
+Shipping To:
 {order.shipping_full_name}
-{order.shipping_address_text}, {order.shipping_city}, {order.shipping_state}, {order.shipping_country}
+{order.shipping_address_text}
+{order.shipping_city}, {order.shipping_state}, {order.shipping_country}
 Postal Code: {order.shipping_postal_code}
 
 Thank you for shopping with us!
-"""
+            """
 
-                send_mail(
-                    subject=f"Your Order {order.id} Has Been Shipped!",
-                    message=message,
-                    from_email="no-reply@shop.com",
-                    recipient_list=[user_email],
-                    fail_silently=False,
-                )
-
-        except Exception as e:
-            return Response(
-                {"error": f"Failed to create shipment label or send email: {str(e)}"},
-                status=500
+            send_mail(
+                subject=f"Your Order #{order.id} Has Been Shipped",
+                message=email_body,
+                from_email="no-reply@shop.com",
+                recipient_list=[user.email],
+                fail_silently=False,
             )
 
-        # -------------------------------------------
-        # Success Response
-        # -------------------------------------------
+        # ---------------------------------------------------
+        # 6. Success Response
+        # ---------------------------------------------------
         return Response(
             {
-                "status": "Shipment label created and email sent",
-                "shipment": ShipmentSerializer(shipment).data
+                "status": "Shipment label generated successfully and customer notified.",
+                "shipment": ShipmentSerializer(shipment).data,
             },
-            status=200
+            status=status.HTTP_200_OK
         )

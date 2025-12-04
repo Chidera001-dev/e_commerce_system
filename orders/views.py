@@ -60,20 +60,26 @@ class OrderDetailAPIView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-# ---------------- PAYSTACK WEBHOOK ----------------
 class PaymentWebhookAPIView(APIView):
     permission_classes = [permissions.AllowAny]
+
     @swagger_auto_schema(
         operation_summary="Paystack Payment Webhook",
         operation_description="Handle Paystack payment verification webhook to update order status.",
     )
-
     def post(self, request):
+        # --------------------------
+        # Validate Paystack signature
+        # --------------------------
         if not settings.DEBUG:
             signature = request.headers.get("X-Paystack-Signature")
             if not signature:
                 return Response({"error": "Signature missing"}, status=400)
-            computed_sig = hmac.new(settings.PAYSTACK_SECRET_KEY.encode(), msg=request.body, digestmod=hashlib.sha512).hexdigest()
+            computed_sig = hmac.new(
+                settings.PAYSTACK_SECRET_KEY.encode(),
+                msg=request.body,
+                digestmod=hashlib.sha512
+            ).hexdigest()
             if not hmac.compare_digest(signature, computed_sig):
                 return Response({"error": "Invalid signature"}, status=400)
 
@@ -87,7 +93,11 @@ class PaymentWebhookAPIView(APIView):
         if not order:
             return Response({"message": "Order already processed or not found"}, status=200)
 
-        # Verify amount
+        # --------------------------
+        # Verify amount with currency
+        # --------------------------
+        currency = order.currency.upper() if hasattr(order, "currency") else "NGN"
+
         if settings.DEBUG:
             amount_paid = payload.get("data", {}).get("amount") or int(order.total * 100)
         else:
@@ -95,12 +105,21 @@ class PaymentWebhookAPIView(APIView):
             if not verification["status"] or verification["data"]["status"] != "success":
                 return Response({"error": "Transaction could not be verified"}, status=400)
             amount_paid = verification["data"]["amount"]
+            paid_currency = verification["data"].get("currency", "NGN").upper()
 
-        if amount_paid != int(order.total * 100):
-            return Response({"error": "Paid amount does not match order total"}, status=400)
-        
-        # ---------------- CREATE SHIPMENT SNAPSHOT ----------------
-        if not hasattr(order, "order_shipment"):  
+            # Normalize amounts for comparison
+            if paid_currency == "NGN":
+                expected_amount = int(order.total * 100)  # in kobo
+            else:
+                expected_amount = round(float(order.total), 2)  # USD sent as decimal
+
+            if amount_paid != expected_amount:
+                return Response({"error": f"Paid amount ({amount_paid}) does not match order total ({expected_amount})"}, status=400)
+
+        # --------------------------
+        # Create shipment snapshot if not exists
+        # --------------------------
+        if not hasattr(order, "order_shipment"):
             shipment = Shipment.objects.create(
                 order=order,
                 shipping_full_name=order.shipping_full_name,
@@ -111,11 +130,16 @@ class PaymentWebhookAPIView(APIView):
                 shipping_postal_code=order.shipping_postal_code,
                 shipping_phone=order.shipping_phone,
                 shipping_fee=order.shipping_cost,
-                delivery_status="pending", 
+                delivery_status="pending",
             )
 
-
+        # --------------------------
         # Trigger Celery task
-        process_order_after_payment.delay(order_id=order.id, user_email=order.user.email if order.user else None, user_id=order.user.id if order.user else None)
+        # --------------------------
+        process_order_after_payment.delay(
+            order_id=order.id,
+            user_email=order.user.email if order.user else None,
+            user_id=order.user.id if order.user else None
+        )
 
-        return Response({"message": "Payment verified. Order processing started."}, status=200)
+        return Response({"message": f"Payment verified in {currency}. Order processing started."}, status=200)

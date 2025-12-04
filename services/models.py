@@ -29,7 +29,7 @@ class ShippingAddress(models.Model):
     city = models.CharField(max_length=100)
     state = models.CharField(max_length=100)
     postal_code = models.CharField(max_length=20, blank=True, null=True)
-    country = models.CharField(max_length=50, default="Nigeria")
+    country = models.CharField(max_length=50, default="US")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -85,7 +85,7 @@ class Shipment(models.Model):
     shipping_address_text = models.CharField(max_length=255, null=True, blank=True)
     shipping_city = models.CharField(max_length=100, null=True, blank=True)
     shipping_state = models.CharField(max_length=100, null=True, blank=True)
-    shipping_country = models.CharField(max_length=50, default="Nigeria", null=True, blank=True)
+    shipping_country = models.CharField(max_length=50, default="US", null=True, blank=True)
     shipping_postal_code = models.CharField(max_length=20, null=True, blank=True)
 
     shipping_method = models.CharField(

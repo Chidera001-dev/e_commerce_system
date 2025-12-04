@@ -64,7 +64,7 @@ class Order(models.Model):
     shipping_address_text = models.CharField(max_length=255, null=True, blank=True)
     shipping_city = models.CharField(max_length=100, null=True, blank=True)
     shipping_state = models.CharField(max_length=100, null=True, blank=True)
-    shipping_country = models.CharField(max_length=100, default="Nigeria", null=True, blank=True)
+    shipping_country = models.CharField(max_length=100, default="US", null=True, blank=True)
     shipping_postal_code = models.CharField(max_length=20, null=True, blank=True)
 
     # Provider fields

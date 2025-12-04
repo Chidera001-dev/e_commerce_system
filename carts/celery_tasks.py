@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 from celery import shared_task
 from django.core.mail import send_mail
 from django.db import transaction
@@ -18,7 +19,6 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
     - Update order status & payment status
     - Send confirmation email
     """
-
     try:
         order = (
             Order.objects
@@ -48,7 +48,10 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
             for item in order_items:
                 product = Product.objects.select_for_update().get(id=item.product.id)
                 if product.stock < item.quantity:
-                    raise ValueError(f"Insufficient stock for {product.name} (available: {product.stock}, required: {item.quantity})")
+                    raise ValueError(
+                        f"Insufficient stock for {product.name} "
+                        f"(available: {product.stock}, required: {item.quantity})"
+                    )
                 product.stock -= item.quantity
                 product.save()
 
@@ -56,26 +59,39 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
             if user_id:
                 clear_cart(f"user:{user_id}")
 
-            # Update order
+            # Update order status
             order.payment_status = "paid"
             order.status = "processing"
             order.save()
 
-        # Send email
-        if user_email:
-            items_list = "\n".join([f"{i.product.name} x {i.quantity} = ₦{i.subtotal}" for i in order_items])
-            shipping_info = (
-                f"Name: {order.shipping_full_name}\n"
-                f"Phone: {order.shipping_phone}\n"
-                f"Address: {order.full_shipping_address}"
-            )
-            message = f"""
+            # ---------------------------
+            # Send email notification
+            # ---------------------------
+            if user_email:
+                currency_symbol = "₦" if order.currency.upper() == "NGN" else "$"
+
+                # Format items with dynamic currency
+                items_list = "\n".join([
+                    f"{i.product.name} x {i.quantity} = {currency_symbol}{i.subtotal}"
+                    for i in order_items
+                ])
+
+                # Format total paid
+                total_paid = f"{currency_symbol}{order.total}"
+
+                shipping_info = (
+                    f"Name: {order.shipping_full_name}\n"
+                    f"Phone: {order.shipping_phone}\n"
+                    f"Address: {order.full_shipping_address}"
+                )
+
+                message = f"""
 Hi {order.user.username if order.user else 'Customer'},
 
 Your payment has been confirmed, and your order is now processing.
 
 Order ID: {order.id}
-Total Paid: ₦{order.total}
+Total Paid: {total_paid}
 
 Items:
 {items_list}
@@ -87,17 +103,16 @@ A follow-up email will be sent when your shipment is created with tracking detai
 
 Thank you for your purchase!
 """
-            send_mail(
-                subject=f"Payment Successful - Order {order.id}",
-                message=message,
-                from_email="no-reply@shop.com",
-                recipient_list=[user_email],
-                fail_silently=True,
-            )
+                send_mail(
+                    subject=f"Payment Successful - Order {order.id}",
+                    message=message,
+                    from_email="no-reply@shop.com",
+                    recipient_list=[user_email],
+                    fail_silently=True,
+                )
 
         logger.info(f"Order {order.id} processed successfully.")
 
     except Exception as exc:
         logger.error(f"Order {order.id} failed: {exc}")
         raise self.retry(exc=exc, countdown=10)
-
