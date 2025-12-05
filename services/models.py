@@ -6,9 +6,8 @@ User = settings.AUTH_USER_MODEL
 
 
 
-# -------------------------------
 # Shipping Address
-# -------------------------------
+
 class ShippingAddress(models.Model):
     """
     Optional separate shipping address, can be used for saving multiple addresses per user.
@@ -42,9 +41,9 @@ class ShippingAddress(models.Model):
         return f"{self.full_name} - {self.city}"
 
 
-# -------------------------------
+
 # Shipment
-# -------------------------------
+
 class Shipment(models.Model):
     """
     Stores shipping details, tracking info, and status for each Order.

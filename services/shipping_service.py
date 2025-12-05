@@ -13,16 +13,15 @@ from orders.models import Order
 shippo_client = Shippo(api_key_header=settings.SHIPPO_API_KEY)
 
 
-# -------------------------------
 # Helper – Generate tracking code
-# -------------------------------
+
 def generate_random_tracking(length=12):
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
 
-# -------------------------------
+
 # Shipping Fee Calculator
-# -------------------------------
+
 def calculate_shipping_fee(cart_items=None, shipping_address=None):
     base_fee = Decimal("200.00")
     per_item_fee = Decimal("100.00")
@@ -30,15 +29,15 @@ def calculate_shipping_fee(cart_items=None, shipping_address=None):
     return base_fee + (per_item_fee * item_count)
 
 
-# -------------------------------
+
 # Create Shipment Label
-# -------------------------------
+
 def create_shipment_label(order, shipment=None, download_path="labels"):
 
     try:
-        # -------------------------
+       
         # Build Shippo Shipment
-        # -------------------------
+        
         shipment_request = components.ShipmentCreateRequest(
             address_from=components.Address(
                 name="Chidera Solutions LLC",
@@ -80,9 +79,9 @@ def create_shipment_label(order, shipment=None, download_path="labels"):
 
         selected_rate = created_shipment.rates[0]
 
-        # -------------------------
+      
         # Create label (transaction)
-        # -------------------------
+      
         transaction_request = components.TransactionCreateRequest(
             rate=selected_rate.object_id,
             label_file_type="PDF",
@@ -104,9 +103,9 @@ def create_shipment_label(order, shipment=None, download_path="labels"):
             selected_rate.provider or "UPS"
         )
 
-        # -------------------------
+    
         # Download the label PDF
-        # -------------------------
+     
         if not os.path.exists(download_path):
             os.makedirs(download_path)
 
@@ -117,18 +116,18 @@ def create_shipment_label(order, shipment=None, download_path="labels"):
         with open(pdf_path, "wb") as f:
             f.write(response.content)
 
-        # -------------------------
+       
         # Update order snapshot
-        # -------------------------
+       
         order.shipping_provider = carrier
         order.shipping_tracking_number = tracking_number
         order.shipping_label_url = pdf_path
         order.shipping_status = "shipped"
         order.save()
 
-        # -------------------------
+       
         # Update Shipment model
-        # -------------------------
+      
         if shipment:
             shipment.tracking_number = tracking_number
             shipment.courier_name = carrier

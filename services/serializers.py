@@ -2,9 +2,9 @@ from rest_framework import serializers
 from orders.models import Order, OrderItem
 from .models import Shipment, ShippingAddress
 
-# -------------------------------
+
 # Order Item Serializer
-# -------------------------------
+
 class OrderItemSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
     subtotal = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
@@ -20,9 +20,9 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "subtotal",
         ]
 
-# -------------------------------
+
 # Order Serializer
-# -------------------------------
+
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
 
@@ -49,9 +49,9 @@ class OrderSerializer(serializers.ModelSerializer):
             "transaction_id",
         ]
 
-# -------------------------------
+
 # Shipping Address Serializer
-# -------------------------------
+
 class ShippingAddressSerializer(serializers.ModelSerializer):
     class Meta:
         model = ShippingAddress
@@ -75,9 +75,9 @@ class ShippingAddressSerializer(serializers.ModelSerializer):
         validated_data["user"] = self.context["request"].user  
         return super().create(validated_data)    
 
-# -------------------------------
+
 # Shipment Serializer
-# -------------------------------
+
 class ShipmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Shipment

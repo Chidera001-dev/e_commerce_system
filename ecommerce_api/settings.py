@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "carts.apps.CartsConfig",
     "orders.apps.OrdersConfig",
     "services.apps.ServicesConfig",
+    
     # third party apps
     "rest_framework",
     "django_filters",

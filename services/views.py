@@ -12,9 +12,9 @@ from .permissions import IsOwnerOrReadOnly, IsAdminOrReadOnly
 from .shipping_service import calculate_shipping_fee, create_shipment_label
 
 
-# -------------------------------
+
 # Shipping Address Views
-# -------------------------------
+
 class ShippingAddressListCreateAPIView(generics.ListCreateAPIView):
     """
     List all shipping addresses for the authenticated user, or create a new one.
@@ -44,9 +44,9 @@ class ShippingAddressDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
         return ShippingAddress.objects.filter(user=self.request.user)
 
 
-# -------------------------------
+
 # Shipment Views
-# -------------------------------
+
 class ShipmentListAPIView(generics.ListAPIView):
     """
     List shipments:

@@ -9,9 +9,9 @@ from .views import (
 )
 
 urlpatterns = [
-    # -------------------------------
+    
     # Shipping Address Endpoints
-    # -------------------------------
+ 
     path(
         "services/shipping-addresses/",
         ShippingAddressListCreateAPIView.as_view(),
@@ -22,9 +22,9 @@ urlpatterns = [
         ShippingAddressDetailAPIView.as_view(),
         name="shipping-address-detail",
     ),
-    # -------------------------------
+
     # Shipment Endpoints
-    # -------------------------------
+  
     path(
         "services/shipments/",
         ShipmentListAPIView.as_view(),

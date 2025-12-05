@@ -64,9 +64,9 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
             order.status = "processing"
             order.save()
 
-            # ---------------------------
+          
             # Send email notification
-            # ---------------------------
+           
             if user_email:
                 currency_symbol = "₦" if getattr(order, 'currency', 'NGN').upper() == "NGN" else "$"
 
