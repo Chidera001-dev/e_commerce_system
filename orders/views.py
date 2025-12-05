@@ -68,9 +68,9 @@ class PaymentWebhookAPIView(APIView):
         operation_description="Handle Paystack payment verification webhook to update order status.",
     )
     def post(self, request):
-        
+
         # Validate Paystack signature
-    
+
         if not settings.DEBUG:
             signature = request.headers.get("X-Paystack-Signature")
             if not signature:
@@ -78,7 +78,7 @@ class PaymentWebhookAPIView(APIView):
             computed_sig = hmac.new(
                 settings.PAYSTACK_SECRET_KEY.encode(),
                 msg=request.body,
-                digestmod=hashlib.sha512
+                digestmod=hashlib.sha512,
             ).hexdigest()
             if not hmac.compare_digest(signature, computed_sig):
                 return Response({"error": "Invalid signature"}, status=400)
@@ -91,19 +91,27 @@ class PaymentWebhookAPIView(APIView):
         order_id = reference.replace("ORD-", "")
         order = Order.objects.filter(id=order_id, payment_status="pending").first()
         if not order:
-            return Response({"message": "Order already processed or not found"}, status=200)
+            return Response(
+                {"message": "Order already processed or not found"}, status=200
+            )
 
-     
         # Verify amount with currency
-       
+
         currency = order.currency.upper() if hasattr(order, "currency") else "NGN"
 
         if settings.DEBUG:
-            amount_paid = payload.get("data", {}).get("amount") or int(order.total * 100)
+            amount_paid = payload.get("data", {}).get("amount") or int(
+                order.total * 100
+            )
         else:
             verification = paystack.transaction.verify(reference)
-            if not verification["status"] or verification["data"]["status"] != "success":
-                return Response({"error": "Transaction could not be verified"}, status=400)
+            if (
+                not verification["status"]
+                or verification["data"]["status"] != "success"
+            ):
+                return Response(
+                    {"error": "Transaction could not be verified"}, status=400
+                )
             amount_paid = verification["data"]["amount"]
             paid_currency = verification["data"].get("currency", "NGN").upper()
 
@@ -114,11 +122,15 @@ class PaymentWebhookAPIView(APIView):
                 expected_amount = round(float(order.total), 2)  # USD sent as decimal
 
             if amount_paid != expected_amount:
-                return Response({"error": f"Paid amount ({amount_paid}) does not match order total ({expected_amount})"}, status=400)
+                return Response(
+                    {
+                        "error": f"Paid amount ({amount_paid}) does not match order total ({expected_amount})"
+                    },
+                    status=400,
+                )
 
-      
         # Create shipment snapshot if not exists
-       
+
         if not hasattr(order, "order_shipment"):
             shipment = Shipment.objects.create(
                 order=order,
@@ -133,13 +145,15 @@ class PaymentWebhookAPIView(APIView):
                 delivery_status="pending",
             )
 
-    
         # Trigger Celery task
-       
+
         process_order_after_payment.delay(
             order_id=order.id,
             user_email=order.user.email if order.user else None,
-            user_id=order.user.id if order.user else None
+            user_id=order.user.id if order.user else None,
         )
 
-        return Response({"message": f"Payment verified in {currency}. Order processing started."}, status=200)
+        return Response(
+            {"message": f"Payment verified in {currency}. Order processing started."},
+            status=200,
+        )

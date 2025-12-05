@@ -1,5 +1,7 @@
 from rest_framework import serializers
+
 from product.serializers import ProductSerializer
+
 from .models import Order, OrderItem
 
 
@@ -37,17 +39,14 @@ class OrderSerializer(serializers.ModelSerializer):
             "transaction_id",
             "reference",
             "total",
-
             # consolidated shipping
             "shipping_info",
-
             "shipping_provider",
             "shipping_tracking_number",
             "shipping_label_url",
             "shipping_status",
             "shipping_cost",
             "shipment_created",
-
             "created_at",
             "updated_at",
             "items",
@@ -71,7 +70,7 @@ class OrderSerializer(serializers.ModelSerializer):
         return {
             "full_name": obj.shipping_full_name,
             "phone": obj.shipping_phone,
-            "address": obj.shipping_address_text,   
+            "address": obj.shipping_address_text,
             "city": obj.shipping_city,
             "state": obj.shipping_state,
             "country": obj.shipping_country,

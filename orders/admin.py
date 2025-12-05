@@ -1,4 +1,5 @@
 from django.contrib import admin
+
 from .models import Order, OrderItem
 
 
@@ -50,7 +51,10 @@ class OrderAdmin(admin.ModelAdmin):
     )
 
     fieldsets = (
-        ("Order Info", {"fields": ("user", "cart", "total", "status", "payment_status")}),
+        (
+            "Order Info",
+            {"fields": ("user", "cart", "total", "status", "payment_status")},
+        ),
         ("Payment", {"fields": ("payment_method", "transaction_id")}),
         (
             "Shipping",
@@ -102,5 +106,6 @@ class OrderAdmin(admin.ModelAdmin):
                 "shipment_created",
             )
         return self.readonly_fields
+
 
 # Register your models here.

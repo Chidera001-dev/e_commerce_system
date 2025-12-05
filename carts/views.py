@@ -7,8 +7,9 @@ from rest_framework.response import Response
 from orders.models import Order, OrderItem
 from orders.views import initialize_transaction
 from product.models import Product
-from services.models import ShippingAddress, Shipment
+from services.models import Shipment, ShippingAddress
 from services.shipping_service import calculate_shipping_fee
+
 from .celery_tasks import process_order_after_payment as process_order_shipment
 from .models import Cart, CartItem
 from .permissions import CartPermission
@@ -294,7 +295,8 @@ class CartViewSet(viewsets.ViewSet):
         return Response(
             {"message": "Cart merged successfully"}, status=status.HTTP_200_OK
         )
-   # ------------------- CHECKOUT -------------------
+
+    # ------------------- CHECKOUT -------------------
     @swagger_auto_schema(
         operation_summary="Checkout cart",
         operation_description=(
@@ -306,37 +308,56 @@ class CartViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["post"])
     def checkout(self, request):
         if not request.user.is_authenticated:
-            return Response({"error": "Login required"}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response(
+                {"error": "Login required"}, status=status.HTTP_401_UNAUTHORIZED
+            )
 
         cart = Cart.objects.filter(user=request.user, is_active=True).first()
         if not cart or not cart.items.exists():
-            return Response({"error": "Cart is empty"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Cart is empty"}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         # ----------------- STOCK VALIDATION -----------------
         for item in cart.items.all():
             if item.product.stock < item.quantity:
                 return Response(
-                    {"error": f"Insufficient stock for {item.product.name}. Available: {item.product.stock}"},
-                    status=status.HTTP_400_BAD_REQUEST
+                    {
+                        "error": f"Insufficient stock for {item.product.name}. Available: {item.product.stock}"
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
         # ----------------- SHIPPING ADDRESS -----------------
         shipping_address_id = request.data.get("shipping_address_id")
         if not shipping_address_id:
-            return Response({"error": "shipping_address_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "shipping_address_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
-            shipping_address = ShippingAddress.objects.get(id=shipping_address_id, user=request.user)
+            shipping_address = ShippingAddress.objects.get(
+                id=shipping_address_id, user=request.user
+            )
         except ShippingAddress.DoesNotExist:
-            return Response({"error": "Shipping address not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "Shipping address not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         # ----------------- CHECK FOR EXISTING ORDER -----------------
         if Order.objects.filter(cart=cart).exists():
-            return Response({"error": "This cart has already been checked out"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "This cart has already been checked out"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # ----------------- ORDER CREATION -----------------
         subtotal = sum(item.subtotal for item in cart.items.all())
-        shipping_fee = calculate_shipping_fee(cart_items=cart.items.all(), shipping_address=shipping_address)
+        shipping_fee = calculate_shipping_fee(
+            cart_items=cart.items.all(), shipping_address=shipping_address
+        )
         total_amount = subtotal + shipping_fee
 
         order = Order.objects.create(
@@ -355,15 +376,17 @@ class CartViewSet(viewsets.ViewSet):
             shipping_cost=shipping_fee,
         )
 
-        OrderItem.objects.bulk_create([
-            OrderItem(
-                order=order,
-                product=item.product,
-                quantity=item.quantity,
-                price_snapshot=item.price_snapshot
-            )
-            for item in cart.items.all()
-        ])
+        OrderItem.objects.bulk_create(
+            [
+                OrderItem(
+                    order=order,
+                    product=item.product,
+                    quantity=item.quantity,
+                    price_snapshot=item.price_snapshot,
+                )
+                for item in cart.items.all()
+            ]
+        )
 
         # ----------------- DEACTIVATE CART -----------------
         cart.items.all().delete()
@@ -374,19 +397,31 @@ class CartViewSet(viewsets.ViewSet):
         order.save()
 
         # ----------------- INITIALIZE PAYMENT -----------------
-        paystack_resp = initialize_transaction(request.user.email, int(order.total), order.reference)
+        paystack_resp = initialize_transaction(
+            request.user.email, int(order.total), order.reference
+        )
         if not paystack_resp.get("status"):
-            return Response({"error": paystack_resp.get("message", "Payment initialization failed")}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {
+                    "error": paystack_resp.get(
+                        "message", "Payment initialization failed"
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        return Response({
-            "order_id": order.id,
-            "reference": order.reference,
-            "shipping_cost": shipping_fee,
-            "total_amount": total_amount,
-            "authorization_url": paystack_resp["data"]["authorization_url"],
-            "access_code": paystack_resp["data"]["access_code"],
-            "message": "Checkout initialized. Payment required to process order.",
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                "order_id": order.id,
+                "reference": order.reference,
+                "shipping_cost": shipping_fee,
+                "total_amount": total_amount,
+                "authorization_url": paystack_resp["data"]["authorization_url"],
+                "access_code": paystack_resp["data"]["access_code"],
+                "message": "Checkout initialized. Payment required to process order.",
+            },
+            status=status.HTTP_200_OK,
+        )
 
     # ------------------- LOAD CART -------------------
 

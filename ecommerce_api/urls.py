@@ -22,14 +22,12 @@ urlpatterns = [
     #  Djoser authentication routes (global)
     path("auth/", include("djoser.urls")),
     path("auth/", include("djoser.urls.jwt")),
-
     #  Your custom user/profile API routes
     path("api/", include("users.urls")),
     path("api/", include("product.urls")),
     path("api/", include("carts.urls")),
     path("api/", include("orders.urls")),
     path("api/", include("services.urls")),
-    
     # Swagger docs
     path(
         "swagger/",

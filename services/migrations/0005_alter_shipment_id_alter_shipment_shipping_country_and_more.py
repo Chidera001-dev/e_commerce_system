@@ -7,28 +7,42 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('services', '0004_shippingaddress_user_alter_shipment_id_and_more'),
+        ("services", "0004_shippingaddress_user_alter_shipment_id_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='shipment',
-            name='id',
-            field=models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True),
+            model_name="shipment",
+            name="id",
+            field=models.CharField(
+                default=shortuuid.main.ShortUUID.uuid,
+                editable=False,
+                max_length=22,
+                primary_key=True,
+                serialize=False,
+                unique=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='shipment',
-            name='shipping_country',
-            field=models.CharField(blank=True, default='US', max_length=50, null=True),
+            model_name="shipment",
+            name="shipping_country",
+            field=models.CharField(blank=True, default="US", max_length=50, null=True),
         ),
         migrations.AlterField(
-            model_name='shippingaddress',
-            name='country',
-            field=models.CharField(default='US', max_length=50),
+            model_name="shippingaddress",
+            name="country",
+            field=models.CharField(default="US", max_length=50),
         ),
         migrations.AlterField(
-            model_name='shippingaddress',
-            name='id',
-            field=models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True),
+            model_name="shippingaddress",
+            name="id",
+            field=models.CharField(
+                default=shortuuid.main.ShortUUID.uuid,
+                editable=False,
+                max_length=22,
+                primary_key=True,
+                serialize=False,
+                unique=True,
+            ),
         ),
     ]

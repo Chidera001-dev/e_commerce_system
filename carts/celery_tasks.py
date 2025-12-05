@@ -1,5 +1,6 @@
 import logging
 from decimal import Decimal
+
 from celery import shared_task
 from django.core.mail import send_mail
 from django.db import transaction
@@ -9,6 +10,7 @@ from orders.models import Order
 from product.models import Product
 
 logger = logging.getLogger(__name__)
+
 
 @shared_task(bind=True, max_retries=3)
 def process_order_after_payment(self, order_id, user_email=None, user_id=None):
@@ -21,8 +23,7 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
     """
     try:
         order = (
-            Order.objects
-            .select_related("user")
+            Order.objects.select_related("user")
             .prefetch_related("items__product")
             .get(id=order_id)
         )
@@ -64,18 +65,20 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
             order.status = "processing"
             order.save()
 
-          
             # Send email notification
-           
-            if user_email:
-                currency_symbol = "₦" if getattr(order, 'currency', 'NGN').upper() == "NGN" else "$"
 
+            if user_email:
+                currency_symbol = (
+                    "₦" if getattr(order, "currency", "NGN").upper() == "NGN" else "$"
+                )
 
                 # Format items with dynamic currency
-                items_list = "\n".join([
-                    f"{i.product.name} x {i.quantity} = {currency_symbol}{i.subtotal}"
-                    for i in order_items
-                ])
+                items_list = "\n".join(
+                    [
+                        f"{i.product.name} x {i.quantity} = {currency_symbol}{i.subtotal}"
+                        for i in order_items
+                    ]
+                )
 
                 # Format total paid
                 total_paid = f"{currency_symbol}{order.total}"

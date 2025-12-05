@@ -1,5 +1,6 @@
 from rest_framework import permissions
 
+
 class IsOwnerOrReadOnly(permissions.BasePermission):
     """
     Object-level permission:
@@ -7,6 +8,7 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
     - Others have no access.
     Works for ShippingAddress (obj.user) and Shipment (obj.order.user).
     """
+
     def has_object_permission(self, request, view, obj):
         # Determine owner
         if hasattr(obj, "user"):
@@ -25,6 +27,7 @@ class IsAdminOrReadOnly(permissions.BasePermission):
     Only admin/staff can modify objects (POST/PUT/PATCH/DELETE).
     Others have read-only access.
     """
+
     def has_permission(self, request, view):
         # Safe methods allowed for everyone
         if request.method in permissions.SAFE_METHODS:

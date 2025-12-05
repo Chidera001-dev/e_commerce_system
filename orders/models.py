@@ -1,9 +1,9 @@
 import shortuuid
 from django.conf import settings
 from django.db import models
+
 from carts.models import Cart
 from product.models import Product
-
 
 User = settings.AUTH_USER_MODEL
 
@@ -49,15 +49,23 @@ class Order(models.Model):
         on_delete=models.SET_NULL,
         related_name="order",
     )
-    
+
     # Payment
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending", db_index=True)
-    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default="pending", db_index=True)
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default="pending", db_index=True
+    )
+    payment_status = models.CharField(
+        max_length=20, choices=PAYMENT_STATUS_CHOICES, default="pending", db_index=True
+    )
     reference = models.CharField(max_length=50, null=True, blank=True, db_index=True)
-    transaction_id = models.CharField(max_length=100, null=True, blank=True, unique=True)
+    transaction_id = models.CharField(
+        max_length=100, null=True, blank=True, unique=True
+    )
     payment_method = models.CharField(max_length=50, null=True, blank=True)
     total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    currency = models.CharField(max_length=3, default="NGN", help_text="Currency code, e.g., NGN, USD")  
+    currency = models.CharField(
+        max_length=3, default="NGN", help_text="Currency code, e.g., NGN, USD"
+    )
 
     # Shipping Info
     shipping_full_name = models.CharField(max_length=100, null=True, blank=True)
@@ -65,16 +73,26 @@ class Order(models.Model):
     shipping_address_text = models.CharField(max_length=255, null=True, blank=True)
     shipping_city = models.CharField(max_length=100, null=True, blank=True)
     shipping_state = models.CharField(max_length=100, null=True, blank=True)
-    shipping_country = models.CharField(max_length=100, default="US", null=True, blank=True)
+    shipping_country = models.CharField(
+        max_length=100, default="US", null=True, blank=True
+    )
     shipping_postal_code = models.CharField(max_length=20, null=True, blank=True)
 
     # Provider fields
     shipping_provider = models.CharField(max_length=100, null=True, blank=True)
-    shipping_tracking_number = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    shipping_tracking_number = models.CharField(
+        max_length=100, null=True, blank=True, db_index=True
+    )
     shipping_label_url = models.CharField(max_length=255, null=True, blank=True)
-    shipping_status = models.CharField(max_length=50, null=True, blank=True, db_index=True)
-    shipping_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    shipment_created = models.BooleanField(default=False, help_text="Set to True when shipment is created via Celery")
+    shipping_status = models.CharField(
+        max_length=50, null=True, blank=True, db_index=True
+    )
+    shipping_cost = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True
+    )
+    shipment_created = models.BooleanField(
+        default=False, help_text="Set to True when shipment is created via Celery"
+    )
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -117,7 +135,9 @@ class OrderItem(models.Model):
         unique=True,
     )
     order = models.ForeignKey(Order, related_name="items", on_delete=models.CASCADE)
-    product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, related_name="order_items")
+    product = models.ForeignKey(
+        Product, on_delete=models.SET_NULL, null=True, related_name="order_items"
+    )
     quantity = models.PositiveIntegerField(default=1)
     price_snapshot = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 

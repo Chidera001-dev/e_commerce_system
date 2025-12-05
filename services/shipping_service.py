@@ -1,26 +1,29 @@
-import string
+import os
 import random
-import requests
+import string
 from decimal import Decimal
+
+import requests
+from django.conf import settings
 from shippo import Shippo
 from shippo.models import components
-from django.conf import settings
-import os
+
+from orders.models import Order
 
 from .models import Shipment
-from orders.models import Order
 
 shippo_client = Shippo(api_key_header=settings.SHIPPO_API_KEY)
 
 
 # Helper – Generate tracking code
 
-def generate_random_tracking(length=12):
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
+def generate_random_tracking(length=12):
+    return "".join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
 
 # Shipping Fee Calculator
+
 
 def calculate_shipping_fee(cart_items=None, shipping_address=None):
     base_fee = Decimal("200.00")
@@ -29,15 +32,15 @@ def calculate_shipping_fee(cart_items=None, shipping_address=None):
     return base_fee + (per_item_fee * item_count)
 
 
-
 # Create Shipment Label
+
 
 def create_shipment_label(order, shipment=None, download_path="labels"):
 
     try:
-       
+
         # Build Shippo Shipment
-        
+
         shipment_request = components.ShipmentCreateRequest(
             address_from=components.Address(
                 name="Chidera Solutions LLC",
@@ -47,7 +50,7 @@ def create_shipment_label(order, shipment=None, download_path="labels"):
                 zip="94107",
                 country="US",
                 email="sender@example.com",
-                phone="+14155551234"
+                phone="+14155551234",
             ),
             address_to=components.Address(
                 name=order.shipping_full_name,
@@ -57,7 +60,7 @@ def create_shipment_label(order, shipment=None, download_path="labels"):
                 zip=order.shipping_postal_code or "94107",
                 country="US",
                 email=order.user.email if order.user else "customer@example.com",
-                phone=order.shipping_phone or "+14155551234"
+                phone=order.shipping_phone or "+14155551234",
             ),
             parcels=[
                 components.Parcel(
@@ -66,10 +69,10 @@ def create_shipment_label(order, shipment=None, download_path="labels"):
                     height="10",
                     distance_unit="cm",
                     weight="1",
-                    mass_unit="kg"
+                    mass_unit="kg",
                 )
             ],
-            test=True
+            test=True,
         )
 
         created_shipment = shippo_client.shipments.create(shipment_request)
@@ -79,13 +82,10 @@ def create_shipment_label(order, shipment=None, download_path="labels"):
 
         selected_rate = created_shipment.rates[0]
 
-      
         # Create label (transaction)
-      
+
         transaction_request = components.TransactionCreateRequest(
-            rate=selected_rate.object_id,
-            label_file_type="PDF",
-            async_=False
+            rate=selected_rate.object_id, label_file_type="PDF", async_=False
         )
 
         transaction = shippo_client.transactions.create(transaction_request)
@@ -94,18 +94,15 @@ def create_shipment_label(order, shipment=None, download_path="labels"):
             raise Exception(f"Transaction failed: {transaction.messages}")
 
         tracking_number = (
-            getattr(transaction, "tracking_number", None)
-            or generate_random_tracking()
+            getattr(transaction, "tracking_number", None) or generate_random_tracking()
         )
 
         carrier = getattr(
-            transaction, "tracking_provider",
-            selected_rate.provider or "UPS"
+            transaction, "tracking_provider", selected_rate.provider or "UPS"
         )
 
-    
         # Download the label PDF
-     
+
         if not os.path.exists(download_path):
             os.makedirs(download_path)
 
@@ -116,18 +113,16 @@ def create_shipment_label(order, shipment=None, download_path="labels"):
         with open(pdf_path, "wb") as f:
             f.write(response.content)
 
-       
         # Update order snapshot
-       
+
         order.shipping_provider = carrier
         order.shipping_tracking_number = tracking_number
         order.shipping_label_url = pdf_path
         order.shipping_status = "shipped"
         order.save()
 
-       
         # Update Shipment model
-      
+
         if shipment:
             shipment.tracking_number = tracking_number
             shipment.courier_name = carrier
@@ -138,7 +133,7 @@ def create_shipment_label(order, shipment=None, download_path="labels"):
             "label_url": pdf_path,
             "tracking_number": tracking_number,
             "carrier": carrier,
-            "status": "shipped"
+            "status": "shipped",
         }
 
     except Exception as e:
