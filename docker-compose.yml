@@ -12,6 +12,7 @@ services:
     depends_on:
       - db
       - redis
+      - mailhog
 
   db:
     image: postgres:15
@@ -37,6 +38,7 @@ services:
     depends_on:
       - redis
       - db
+      - mailhog
     volumes:
       - .:/app
 
@@ -50,6 +52,7 @@ services:
     depends_on:
       - redis
       - db
+      - mailhog
     volumes:
       - .:/app
 
@@ -70,6 +73,13 @@ services:
       - "8081:8081"
     depends_on:
       - redis
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: mailhog
+    ports:
+      - "1025:1025"  # SMTP port for sending emails
+      - "8025:8025"  # Web UI for viewing emails
 
 volumes:
   postgres_data:

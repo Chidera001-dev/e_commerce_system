@@ -68,7 +68,8 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
             # Send email notification
             # ---------------------------
             if user_email:
-                currency_symbol = "₦" if order.currency.upper() == "NGN" else "$"
+                currency_symbol = "₦" if getattr(order, 'currency', 'NGN').upper() == "NGN" else "$"
+
 
                 # Format items with dynamic currency
                 items_list = "\n".join([

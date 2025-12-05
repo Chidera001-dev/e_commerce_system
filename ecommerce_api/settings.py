@@ -102,15 +102,13 @@ DATABASES = {
         "PORT": config("POSTGRES_PORT", cast=int),
     }
 }
-
-# EMAIL CONFIGURATION (Mailtrap for development)
 EMAIL_BACKEND = config("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
-EMAIL_HOST = config("EMAIL_HOST", "sandbox.smtp.mailtrap.io")
-EMAIL_PORT = int(config("EMAIL_PORT", 587))
-EMAIL_USE_TLS = config("EMAIL_USE_TLS", "True") == "True"
-EMAIL_HOST_USER = config("EMAIL_HOST_USER")
-EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
-DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", "noreply@shopping.com")
+EMAIL_HOST = config("EMAIL_HOST", "localhost")
+EMAIL_PORT = config("EMAIL_PORT", cast=int, default=1025)
+EMAIL_USE_TLS = config("EMAIL_USE_TLS", cast=bool, default=False)
+EMAIL_HOST_USER = config("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
+DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="webmaster@example.com")
 
 CACHES = {
     "default": {

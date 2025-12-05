@@ -57,6 +57,7 @@ class Order(models.Model):
     transaction_id = models.CharField(max_length=100, null=True, blank=True, unique=True)
     payment_method = models.CharField(max_length=50, null=True, blank=True)
     total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    currency = models.CharField(max_length=3, default="NGN", help_text="Currency code, e.g., NGN, USD")  
 
     # Shipping Info
     shipping_full_name = models.CharField(max_length=100, null=True, blank=True)
