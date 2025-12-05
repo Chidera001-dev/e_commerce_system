@@ -7,20 +7,38 @@ from shippo.models import components
 from django.conf import settings
 import os
 
+from .models import Shipment
+from orders.models import Order
+
 shippo_client = Shippo(api_key_header=settings.SHIPPO_API_KEY)
 
+
+# -------------------------------
+# Helper – Generate tracking code
+# -------------------------------
 def generate_random_tracking(length=12):
-    """Generate a random alphanumeric tracking number."""
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
+
+# -------------------------------
+# Shipping Fee Calculator
+# -------------------------------
 def calculate_shipping_fee(cart_items=None, shipping_address=None):
     base_fee = Decimal("200.00")
     per_item_fee = Decimal("100.00")
     item_count = sum(item.quantity for item in cart_items) if cart_items else 1
-    return base_fee + per_item_fee * item_count
+    return base_fee + (per_item_fee * item_count)
 
-def create_shipment_label(order, shipment, download_path="labels"):
+
+# -------------------------------
+# Create Shipment Label
+# -------------------------------
+def create_shipment_label(order, shipment=None, download_path="labels"):
+
     try:
+        # -------------------------
+        # Build Shippo Shipment
+        # -------------------------
         shipment_request = components.ShipmentCreateRequest(
             address_from=components.Address(
                 name="Chidera Solutions LLC",
@@ -42,23 +60,29 @@ def create_shipment_label(order, shipment, download_path="labels"):
                 email=order.user.email if order.user else "customer@example.com",
                 phone=order.shipping_phone or "+14155551234"
             ),
-            parcels=[components.Parcel(
-                length="10",
-                width="10",
-                height="10",
-                distance_unit="cm",
-                weight="1",
-                mass_unit="kg"
-            )],
+            parcels=[
+                components.Parcel(
+                    length="10",
+                    width="10",
+                    height="10",
+                    distance_unit="cm",
+                    weight="1",
+                    mass_unit="kg"
+                )
+            ],
             test=True
         )
 
         created_shipment = shippo_client.shipments.create(shipment_request)
+
         if not created_shipment.rates:
             raise Exception("No shipping rates returned by Shippo")
 
         selected_rate = created_shipment.rates[0]
 
+        # -------------------------
+        # Create label (transaction)
+        # -------------------------
         transaction_request = components.TransactionCreateRequest(
             rate=selected_rate.object_id,
             label_file_type="PDF",
@@ -66,27 +90,56 @@ def create_shipment_label(order, shipment, download_path="labels"):
         )
 
         transaction = shippo_client.transactions.create(transaction_request)
+
         if transaction.status != "SUCCESS":
             raise Exception(f"Transaction failed: {transaction.messages}")
 
-        # Use Shippo tracking number if available; otherwise, generate a random one
-        tracking_number = getattr(transaction, "tracking_number", None) or generate_random_tracking()
+        tracking_number = (
+            getattr(transaction, "tracking_number", None)
+            or generate_random_tracking()
+        )
 
-        # Download PDF for local testing
+        carrier = getattr(
+            transaction, "tracking_provider",
+            selected_rate.provider or "UPS"
+        )
+
+        # -------------------------
+        # Download the label PDF
+        # -------------------------
         if not os.path.exists(download_path):
             os.makedirs(download_path)
 
         pdf_url = transaction.label_url
-        pdf_response = requests.get(pdf_url)
-        pdf_filename = os.path.join(download_path, f"{order.id}_label.pdf")
-        with open(pdf_filename, "wb") as f:
-            f.write(pdf_response.content)
+        pdf_path = os.path.join(download_path, f"{order.id}_label.pdf")
+
+        response = requests.get(pdf_url)
+        with open(pdf_path, "wb") as f:
+            f.write(response.content)
+
+        # -------------------------
+        # Update order snapshot
+        # -------------------------
+        order.shipping_provider = carrier
+        order.shipping_tracking_number = tracking_number
+        order.shipping_label_url = pdf_path
+        order.shipping_status = "shipped"
+        order.save()
+
+        # -------------------------
+        # Update Shipment model
+        # -------------------------
+        if shipment:
+            shipment.tracking_number = tracking_number
+            shipment.courier_name = carrier
+            shipment.label_created = True
+            shipment.save()
 
         return {
-            "label_url": pdf_filename,
+            "label_url": pdf_path,
             "tracking_number": tracking_number,
-            "carrier": getattr(transaction, "tracking_provider", "UPS"),
-            "status": "in_transit"
+            "carrier": carrier,
+            "status": "shipped"
         }
 
     except Exception as e:

@@ -71,7 +71,7 @@ class Order(models.Model):
     # Provider fields
     shipping_provider = models.CharField(max_length=100, null=True, blank=True)
     shipping_tracking_number = models.CharField(max_length=100, null=True, blank=True, db_index=True)
-    shipping_label_url = models.URLField(null=True, blank=True)
+    shipping_label_url = models.CharField(max_length=255, null=True, blank=True)
     shipping_status = models.CharField(max_length=50, null=True, blank=True, db_index=True)
     shipping_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     shipment_created = models.BooleanField(default=False, help_text="Set to True when shipment is created via Celery")
