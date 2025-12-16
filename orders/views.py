@@ -9,6 +9,7 @@ from paystackapi.paystack import Paystack
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db import transaction
 
 from carts.celery_tasks import process_order_after_payment
 from carts.models import Cart
@@ -60,79 +61,62 @@ class OrderDetailAPIView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+# ---------------- PAYSTACK WEBHOOK ----------------
 class PaymentWebhookAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
-    @swagger_auto_schema(
-        operation_summary="Paystack Payment Webhook",
-        operation_description="Handle Paystack payment verification webhook to update order status.",
-    )
     def post(self, request):
-
-        # Validate Paystack signature
-
+        #  Verify Paystack signature
         if not settings.DEBUG:
             signature = request.headers.get("X-Paystack-Signature")
             if not signature:
                 return Response({"error": "Signature missing"}, status=400)
+
             computed_sig = hmac.new(
                 settings.PAYSTACK_SECRET_KEY.encode(),
                 msg=request.body,
                 digestmod=hashlib.sha512,
             ).hexdigest()
+
             if not hmac.compare_digest(signature, computed_sig):
                 return Response({"error": "Invalid signature"}, status=400)
 
         payload = json.loads(request.body)
         reference = payload.get("data", {}).get("reference")
+
         if not reference or not reference.startswith("ORD-"):
             return Response({"error": "Invalid reference"}, status=400)
 
         order_id = reference.replace("ORD-", "")
-        order = Order.objects.filter(id=order_id, payment_status="pending").first()
-        if not order:
-            return Response(
-                {"message": "Order already processed or not found"}, status=200
+
+        #  ATOMIC + ROW LOCK = STRONG IDEMPOTENCY
+        with transaction.atomic():
+            order = (
+                Order.objects.select_for_update()
+                .filter(id=order_id)
+                .first()
             )
 
-        # Verify amount with currency
+            if not order:
+                return Response({"message": "Order not found"}, status=200)
 
-        currency = order.currency.upper() if hasattr(order, "currency") else "NGN"
-
-        if settings.DEBUG:
-            amount_paid = payload.get("data", {}).get("amount") or int(
-                order.total * 100
-            )
-        else:
-            verification = paystack.transaction.verify(reference)
-            if (
-                not verification["status"]
-                or verification["data"]["status"] != "success"
-            ):
+            
+            if order.payment_status == "paid":
                 return Response(
-                    {"error": "Transaction could not be verified"}, status=400
-                )
-            amount_paid = verification["data"]["amount"]
-            paid_currency = verification["data"].get("currency", "NGN").upper()
-
-            # Normalize amounts for comparison
-            if paid_currency == "NGN":
-                expected_amount = int(order.total * 100)  # in kobo
-            else:
-                expected_amount = round(float(order.total), 2)  # USD sent as decimal
-
-            if amount_paid != expected_amount:
-                return Response(
-                    {
-                        "error": f"Paid amount ({amount_paid}) does not match order total ({expected_amount})"
-                    },
-                    status=400,
+                    {"message": "Order already paid"}, status=200
                 )
 
-        # Create shipment snapshot if not exists
+            #  Verify payment success
+            if payload.get("event") != "charge.success":
+                return Response({"message": "Ignoring non-success event"}, status=200)
 
+            #  Mark payment as PAID immediately
+            order.payment_status = "paid"
+            order.save(update_fields=["payment_status"])
+
+        #  Create shipment snapshot (outside lock)
         if not hasattr(order, "order_shipment"):
-            shipment = Shipment.objects.create(
+            Shipment.objects.create(
                 order=order,
                 shipping_full_name=order.shipping_full_name,
                 shipping_address_text=order.shipping_address_text,
@@ -145,8 +129,7 @@ class PaymentWebhookAPIView(APIView):
                 delivery_status="pending",
             )
 
-        # Trigger Celery task
-
+        #  Trigger Celery ONCE
         process_order_after_payment.delay(
             order_id=order.id,
             user_email=order.user.email if order.user else None,
@@ -154,6 +137,6 @@ class PaymentWebhookAPIView(APIView):
         )
 
         return Response(
-            {"message": f"Payment verified in {currency}. Order processing started."},
+            {"message": "Payment verified. Order processing started."},
             status=200,
         )

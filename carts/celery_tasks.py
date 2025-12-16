@@ -1,5 +1,4 @@
 import logging
-from decimal import Decimal
 
 from celery import shared_task
 from django.core.mail import send_mail
@@ -14,13 +13,6 @@ logger = logging.getLogger(__name__)
 
 @shared_task(bind=True, max_retries=3)
 def process_order_after_payment(self, order_id, user_email=None, user_id=None):
-    """
-    Process an order after payment:
-    - Reduce stock by exact quantity
-    - Clear Redis cart
-    - Update order status & payment status
-    - Send confirmation email
-    """
     try:
         order = (
             Order.objects.select_related("user")
@@ -28,42 +20,46 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
             .get(id=order_id)
         )
     except Order.DoesNotExist:
-        logger.error(f"Order {order_id} not found. Aborting task.")
+        logger.error(f"Order {order_id} not found.")
         return
 
-    if order.payment_status == "paid":
+    #  STRONG IDEMPOTENCY GUARD
+    if order.is_processed:
         logger.info(f"Order {order.id} already processed. Skipping.")
+        return
+
+    if order.payment_status != "paid":
+        logger.warning(f"Order {order.id} not paid. Skipping.")
         return
 
     order_items = order.items.all()
     if not order_items.exists():
-        logger.error(f"Order {order.id} has no items. Setting status to pending_items.")
-        order.status = "pending_items"
-        order.payment_status = "pending"
-        order.save()
+        logger.error(f"Order {order.id} has no items.")
         return
 
     try:
         with transaction.atomic():
-            # Validate and reduce stock
+            #  Lock products & reduce stock
             for item in order_items:
-                product = Product.objects.select_for_update().get(id=item.product.id)
+                product = Product.objects.select_for_update().get(
+                    id=item.product.id
+                )
                 if product.stock < item.quantity:
                     raise ValueError(
-                        f"Insufficient stock for {product.name} "
-                        f"(available: {product.stock}, required: {item.quantity})"
+                        f"Insufficient stock for {product.name}"
                     )
-                product.stock -= item.quantity
-                product.save()
 
-            # Clear Redis cart
+                product.stock -= item.quantity
+                product.save(update_fields=["stock"])
+
+            #  Clear cart
             if user_id:
                 clear_cart(f"user:{user_id}")
 
-            # Update order status
-            order.payment_status = "paid"
+            #  Update order business status
             order.status = "processing"
-            order.save()
+            order.is_processed = True
+            order.save(update_fields=["status", "is_processed"])
 
             # Send email notification
 

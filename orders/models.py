@@ -66,6 +66,7 @@ class Order(models.Model):
     currency = models.CharField(
         max_length=3, default="NGN", help_text="Currency code, e.g., NGN, USD"
     )
+    is_processed = models.BooleanField(default=False)
 
     # Shipping Info
     shipping_full_name = models.CharField(max_length=100, null=True, blank=True)
