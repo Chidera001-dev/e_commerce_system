@@ -41,13 +41,9 @@ def process_order_after_payment(self, order_id, user_email=None, user_id=None):
         with transaction.atomic():
             #  Lock products & reduce stock
             for item in order_items:
-                product = Product.objects.select_for_update().get(
-                    id=item.product.id
-                )
+                product = Product.objects.select_for_update().get(id=item.product.id)
                 if product.stock < item.quantity:
-                    raise ValueError(
-                        f"Insufficient stock for {product.name}"
-                    )
+                    raise ValueError(f"Insufficient stock for {product.name}")
 
                 product.stock -= item.quantity
                 product.save(update_fields=["stock"])

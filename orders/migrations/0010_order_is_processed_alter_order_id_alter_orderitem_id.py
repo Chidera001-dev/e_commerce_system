@@ -7,23 +7,37 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('orders', '0009_alter_order_id_alter_order_shipping_label_url_and_more'),
+        ("orders", "0009_alter_order_id_alter_order_shipping_label_url_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='order',
-            name='is_processed',
+            model_name="order",
+            name="is_processed",
             field=models.BooleanField(default=False),
         ),
         migrations.AlterField(
-            model_name='order',
-            name='id',
-            field=models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True),
+            model_name="order",
+            name="id",
+            field=models.CharField(
+                default=shortuuid.main.ShortUUID.uuid,
+                editable=False,
+                max_length=22,
+                primary_key=True,
+                serialize=False,
+                unique=True,
+            ),
         ),
         migrations.AlterField(
-            model_name='orderitem',
-            name='id',
-            field=models.CharField(default=shortuuid.main.ShortUUID.uuid, editable=False, max_length=22, primary_key=True, serialize=False, unique=True),
+            model_name="orderitem",
+            name="id",
+            field=models.CharField(
+                default=shortuuid.main.ShortUUID.uuid,
+                editable=False,
+                max_length=22,
+                primary_key=True,
+                serialize=False,
+                unique=True,
+            ),
         ),
     ]

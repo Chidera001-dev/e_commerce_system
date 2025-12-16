@@ -3,13 +3,13 @@ import hmac
 import json
 
 from django.conf import settings
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
 from paystackapi.paystack import Paystack
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.db import transaction
 
 from carts.celery_tasks import process_order_after_payment
 from carts.models import Cart
@@ -91,20 +91,13 @@ class PaymentWebhookAPIView(APIView):
 
         #  ATOMIC + ROW LOCK = STRONG IDEMPOTENCY
         with transaction.atomic():
-            order = (
-                Order.objects.select_for_update()
-                .filter(id=order_id)
-                .first()
-            )
+            order = Order.objects.select_for_update().filter(id=order_id).first()
 
             if not order:
                 return Response({"message": "Order not found"}, status=200)
 
-            
             if order.payment_status == "paid":
-                return Response(
-                    {"message": "Order already paid"}, status=200
-                )
+                return Response({"message": "Order already paid"}, status=200)
 
             #  Verify payment success
             if payload.get("event") != "charge.success":

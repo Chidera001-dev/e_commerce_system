@@ -49,7 +49,6 @@ INSTALLED_APPS = [
     "orders.apps.OrdersConfig",
     "services.apps.ServicesConfig",
     "reviews.apps.ReviewsConfig",
-
     # third party apps
     "rest_framework",
     "django_filters",
