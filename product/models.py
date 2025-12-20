@@ -2,6 +2,7 @@ import shortuuid
 from django.conf import settings
 from django.db import models
 from django.utils.text import slugify
+from django.db.models import Avg, Count
 
 
 class Category(models.Model):
@@ -63,6 +64,7 @@ class Product(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
+        
     def save(self, *args, **kwargs):
         # Automatically generate unique slug if not provided
         if not self.slug:
@@ -74,6 +76,15 @@ class Product(models.Model):
                 counter += 1
             self.slug = slug
         super().save(*args, **kwargs)
+
+    @property
+    def average_rating(self):
+        avg = self.reviews.aggregate(avg=Avg("rating"))["avg"]
+        return round(avg, 1) if avg else 0
+
+    @property
+    def total_reviews(self):
+        return self.reviews.count()    
 
     def __str__(self):
         return f"{self.name} ({self.category.name})"
