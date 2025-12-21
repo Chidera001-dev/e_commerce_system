@@ -94,10 +94,18 @@ class ShipmentStatusUpdateAPIView(APIView):
 
     @swagger_auto_schema(
         operation_summary="Update Shipment Status",
-        operation_description="Admins can update delivery status, tracking number, estimated delivery date, or courier name.",
+        operation_description=(
+            "Admins can update delivery status, tracking number, "
+            "estimated delivery date, or courier name. "
+            "When delivery_status is set to 'delivered', "
+            "the related order is automatically marked as delivered."
+        ),
     )
     def post(self, request, shipment_id):
-        shipment = get_object_or_404(Shipment, id=shipment_id)
+        shipment = get_object_or_404(
+            Shipment.objects.select_related("order"),
+            id=shipment_id
+        )
 
         if not request.user.is_staff:
             return Response(
@@ -113,11 +121,27 @@ class ShipmentStatusUpdateAPIView(APIView):
             "estimated_delivery_date",
             "courier_name",
         ]
+
+        # Track previous status
+        previous_status = shipment.delivery_status
+
         for field in allowed_fields:
             if field in request.data:
                 setattr(shipment, field, request.data[field])
 
         shipment.save()
+
+        # If marked as delivered, update the related order
+        if (
+            "delivery_status" in request.data
+            and request.data["delivery_status"] == "delivered"
+            and previous_status != "delivered"
+        ):
+            order = shipment.order
+            order.status = "delivered"
+            order.shipping_status = "delivered"
+            order.save(update_fields=["status", "shipping_status", "updated_at"])
+
         return Response(
             {
                 "status": "Shipment updated",

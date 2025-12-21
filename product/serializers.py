@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from reviews.serializers import ReviewSerializer
+
 from .models import Category, Product
 
 
@@ -17,6 +19,10 @@ class ProductSerializer(serializers.ModelSerializer):
     )
     slug = serializers.ReadOnlyField()  # slug as read-only
 
+    # Add reviews and average_rating here
+    reviews = ReviewSerializer(many=True, read_only=True)
+    average_rating = serializers.FloatField(read_only=True)
+
     class Meta:
         model = Product
         fields = [
@@ -33,6 +39,10 @@ class ProductSerializer(serializers.ModelSerializer):
             "is_active",
             "created_at",
             "updated_at",
+            "reviews",
+            "average_rating",
         ]
 
     read_only_fields = ["id", "owner", "slug", "created_at", "updated_at"]
+    
+
