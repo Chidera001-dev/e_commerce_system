@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import CategoryDetailAPIView  # Category Views; Product Views
+from .views import CategoryDetailAPIView,HomepageRecommendationListView, ProductRecommendationListView  
 from .views import (
     CategoryListCreateAPIView,
     ProductDetailAPIView,
@@ -9,6 +9,7 @@ from .views import (
     PublicCategoryListAPIView,
     PublicProductDetailAPIView,
     PublicProductListAPIView,
+    
 )
 
 urlpatterns = [
@@ -44,4 +45,12 @@ urlpatterns = [
     # ---------------------- ADMIN/VENDOR PRODUCT ----------------------
     path("products/", ProductListCreateAPIView.as_view(), name="product-list-create"),
     path("products/<str:id>/", ProductDetailAPIView.as_view(), name="product-detail"),
+
+    # ---------------------- PRODUCT RECOMMENDATIONS ----------------------
+        # Homepage recommendations (public)
+    path("products/recommendations/", HomepageRecommendationListView.as_view(), name="homepage-recommendations"),
+
+    # Product-specific recommendations (public)
+    path("products/<str:id>/recommendations/", ProductRecommendationListView.as_view(), name="product-recommendations"),
+
 ]

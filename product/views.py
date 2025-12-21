@@ -10,6 +10,8 @@ from .filters import ProductFilter
 from .models import Category, Product
 from .permissions import IsAdminOrVendor
 from .serializers import CategorySerializer, ProductSerializer
+from .services.recommendations import get_similar_products
+from django.db.models import Avg
 
 # ---------------------- CATEGORY VIEWS ----------------------
 
@@ -263,5 +265,24 @@ class ProductDetailAPIView(APIView):
         product.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+# ----------------- Homepage Top Recommendations -----------------
+class HomepageRecommendationListView(generics.ListAPIView):
+    serializer_class = ProductSerializer
+    permission_classes = [permissions.AllowAny]
 
-# Create your views here.
+    def get_queryset(self):
+        # Evaluate queryset per request
+        return Product.objects.filter(is_active=True).annotate(
+            avg_rating=Avg("reviews__rating")
+        ).order_by("-avg_rating", "-created_at")[:6]
+
+
+# ----------------- Product-Specific Recommendations -----------------
+class ProductRecommendationListView(generics.ListAPIView):
+    serializer_class = ProductSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        product_id = self.kwargs.get("id")
+        product = get_object_or_404(Product, id=product_id)
+        return get_similar_products(product)
