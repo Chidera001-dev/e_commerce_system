@@ -1,3 +1,5 @@
+from rest_framework.throttling import ScopedRateThrottle
+from ecommerce_api.core.throttles import ComboRateThrottle
 from django.core.mail import send_mail
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
@@ -11,18 +13,14 @@ from .permissions import IsAdminOrReadOnly, IsOwnerOrReadOnly
 from .serializers import ShipmentSerializer, ShippingAddressSerializer
 from .shipping_service import calculate_shipping_fee, create_shipment_label
 
-# Shipping Address Views
 
+# ---------------- Shipping Address Views ----------------
 
 class ShippingAddressListCreateAPIView(generics.ListCreateAPIView):
-    """
-    List all shipping addresses for the authenticated user, or create a new one.
-    Only the owner can list/create.
-    """
-
     serializer_class = ShippingAddressSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
     pagination_class = ServiceOffsetPagination
+    throttle_classes = [ComboRateThrottle]  # general rate limiting
 
     def get_queryset(self):
         return ShippingAddress.objects.filter(user=self.request.user).order_by(
@@ -34,32 +32,23 @@ class ShippingAddressListCreateAPIView(generics.ListCreateAPIView):
 
 
 class ShippingAddressDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
-    """
-    Retrieve, update, or delete a shipping address.
-    Only the owner can modify; read-only for others.
-    """
-
     serializer_class = ShippingAddressSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
     lookup_field = "id"
+    throttle_classes = [ScopedRateThrottle]  # stricter throttling
+    throttle_scope = "shipping_addresses"
 
     def get_queryset(self):
         return ShippingAddress.objects.filter(user=self.request.user)
 
 
-# Shipment Views
-
+# ---------------- Shipment Views ----------------
 
 class ShipmentListAPIView(generics.ListAPIView):
-    """
-    List shipments:
-    - Admins see all shipments.
-    - Regular users see only their own shipments.
-    """
-
     serializer_class = ShipmentSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = ServiceOffsetPagination
+    throttle_classes = [ComboRateThrottle]  # general throttling
 
     def get_queryset(self):
         user = self.request.user
@@ -69,14 +58,11 @@ class ShipmentListAPIView(generics.ListAPIView):
 
 
 class ShipmentDetailAPIView(generics.RetrieveAPIView):
-    """
-    Read shipment details.
-    Accessible to both admins and order owners; owners are read-only.
-    """
-
     serializer_class = ShipmentSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrReadOnly]
     lookup_field = "id"
+    throttle_classes = [ScopedRateThrottle]  # stricter throttling
+    throttle_scope = "shipment_details"
 
     def get_queryset(self):
         user = self.request.user
@@ -86,11 +72,9 @@ class ShipmentDetailAPIView(generics.RetrieveAPIView):
 
 
 class ShipmentStatusUpdateAPIView(APIView):
-    """
-    Only admins can update shipment status.
-    """
-
     permission_classes = [permissions.IsAuthenticated, IsAdminOrReadOnly]
+    throttle_classes = [ScopedRateThrottle]  # stricter throttling for admin updates
+    throttle_scope = "shipment_status_updates"
 
     @swagger_auto_schema(
         operation_summary="Update Shipment Status",
@@ -109,9 +93,7 @@ class ShipmentStatusUpdateAPIView(APIView):
 
         if not request.user.is_staff:
             return Response(
-                {
-                    "error": "Permission denied: Only admins can update shipment details."
-                },
+                {"error": "Permission denied: Only admins can update shipment details."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -122,7 +104,6 @@ class ShipmentStatusUpdateAPIView(APIView):
             "courier_name",
         ]
 
-        # Track previous status
         previous_status = shipment.delivery_status
 
         for field in allowed_fields:
@@ -131,7 +112,6 @@ class ShipmentStatusUpdateAPIView(APIView):
 
         shipment.save()
 
-        # If marked as delivered, update the related order
         if (
             "delivery_status" in request.data
             and request.data["delivery_status"] == "delivered"
@@ -143,20 +123,15 @@ class ShipmentStatusUpdateAPIView(APIView):
             order.save(update_fields=["status", "shipping_status", "updated_at"])
 
         return Response(
-            {
-                "status": "Shipment updated",
-                "shipment": ShipmentSerializer(shipment).data,
-            },
+            {"status": "Shipment updated", "shipment": ShipmentSerializer(shipment).data},
             status=status.HTTP_200_OK,
         )
 
 
 class CreateShipmentLabelAPIView(APIView):
-    """
-    Admins can generate shipment labels for US orders.
-    """
-
     permission_classes = [permissions.IsAuthenticated, IsAdminOrReadOnly]
+    throttle_classes = [ScopedRateThrottle]  # stricter throttling for sensitive actions
+    throttle_scope = "shipment_label_creation"
 
     @swagger_auto_schema(
         operation_summary="Create Shipment Label",
@@ -167,16 +142,12 @@ class CreateShipmentLabelAPIView(APIView):
         order = shipment.order
 
         if order.payment_status != "paid":
-            return Response(
-                {"error": "Cannot create shipment for unpaid order."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"error": "Cannot create shipment for unpaid order."},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         if order.shipping_country != "US":
             return Response(
-                {
-                    "error": "Shipping label creation is restricted to US-only shipments."
-                },
+                {"error": "Shipping label creation is restricted to US-only shipments."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -194,12 +165,9 @@ class CreateShipmentLabelAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        # Notify customer
         user = order.user
         if user and user.email:
-            currency_symbol = (
-                "₦" if getattr(order, "currency", "NGN").upper() == "NGN" else "$"
-            )
+            currency_symbol = "₦" if getattr(order, "currency", "NGN").upper() == "NGN" else "$"
             items_list = "\n".join(
                 [
                     f"• {item.product.name} x{item.quantity} — {currency_symbol}{item.subtotal}"

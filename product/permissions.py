@@ -3,46 +3,41 @@ from rest_framework import permissions
 
 class IsAdminOrVendor(permissions.BasePermission):
     """
-    Custom permission for internal API endpoints.
+    Internal API permission.
 
-    - Admins can create, update, or delete any object.
-    - Vendors can create objects and update/delete only those they own.
-    - Regular users and unauthenticated users cannot access internal endpoints.
+    - Admins: full access to all objects.
+    - Vendors: access ONLY objects they own.
+    - Regular users & anonymous users: NO access.
     """
 
     def has_permission(self, request, view):
+        user = request.user
+
         # Must be authenticated
-        if not request.user or not request.user.is_authenticated:
+        if not user or not user.is_authenticated:
             return False
 
-        # Admins and vendors have full access
-        if request.user.is_staff or getattr(request.user, "is_vendor", False):
-            return True
-
-        # Regular users CANNOT access internal endpoints
-        return False
+        # Only admins or vendors can access internal endpoints
+        return user.is_staff or getattr(user, "is_vendor", False)
 
     def has_object_permission(self, request, view, obj):
-        # Safe methods allowed for read (in internal admin/vendor context)
-        if request.method in permissions.SAFE_METHODS:
+        user = request.user
+
+        # Admin can do anything
+        if user.is_staff:
             return True
 
-        # Admin can modify anything
-        if request.user.is_staff:
-            return True
+        # Vendor: object must belong to them
+        if getattr(user, "is_vendor", False):
+            return hasattr(obj, "owner") and obj.owner == user
 
-        # Vendor can modify only their own object (if owner field exists)
-        if getattr(request.user, "is_vendor", False):
-            if hasattr(obj, "owner"):
-                return obj.owner == request.user
-
-        # Otherwise, deny
+        # Everything else is denied
         return False
 
 
 class IsPublicEndpoint(permissions.BasePermission):
     """
-    Allows unrestricted access to public endpoints.
+    Public endpoints (no authentication required).
     """
 
     def has_permission(self, request, view):

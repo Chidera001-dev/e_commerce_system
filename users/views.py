@@ -4,6 +4,7 @@ from rest_framework import permissions, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.throttling import ScopedRateThrottle
 
 from .models import Profile, User
 from .permissions import IsAdminUser, IsOwnerOrAdmin
@@ -15,15 +16,14 @@ from .serializers import (
 
 # ------------------ USER VIEWS ------------------
 
-
 class UserListCreateAPIView(APIView):
     """
     Admin can list all users or create a new one.
     Normal users cannot access this endpoint.
     """
-
     permission_classes = [IsAdminUser]
-
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "users_admin"  
     @swagger_auto_schema(
         operation_summary="List all users (Admin only)",
         operation_description="Allows admin users to view all registered users.",
@@ -53,8 +53,9 @@ class UserDetailAPIView(APIView):
     Retrieve, update, or delete a specific user.
     Only the user themselves or an admin can access this endpoint.
     """
-
     permission_classes = [IsAdminUser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "users_admin"
 
     def get_object(self, pk):
         return get_object_or_404(User, pk=pk)
@@ -101,8 +102,9 @@ class MeAPIView(APIView):
     """
     Authenticated users can view, update, or delete their own user details.
     """
-
     permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "users_me"  
 
     @swagger_auto_schema(
         operation_summary="Get current user details",
@@ -140,28 +142,24 @@ class MeAPIView(APIView):
 
 # ------------------ PROFILE VIEWS ------------------
 
-
 class ProfileDetailAPIView(APIView):
     """
     - Admin can view or update any profile (using /profiles/<uuid>/)
     - Normal users can only view or update their own profile (using /profiles/)
     """
-
     permission_classes = [IsOwnerOrAdmin]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "profiles" 
 
     def get_object(self, request, uuid=None):
-        # If UUID is provided, only admin can use it
         if uuid:
             if not request.user.is_staff:
                 raise PermissionDenied(
                     "You do not have permission to access other users' profiles."
                 )
             return get_object_or_404(Profile, user__id=uuid)
-
-        # Normal user: access their own profile
         return get_object_or_404(Profile, user=request.user)
 
-    #  Swagger documentation for GET
     @swagger_auto_schema(
         operation_summary="Get profile details",
         operation_description=(
@@ -177,7 +175,6 @@ class ProfileDetailAPIView(APIView):
         serializer = ProfileSerializer(profile)
         return Response(serializer.data)
 
-    #  Swagger documentation for PATCH
     @swagger_auto_schema(
         operation_summary="Update profile (Admin or Owner)",
         operation_description=(

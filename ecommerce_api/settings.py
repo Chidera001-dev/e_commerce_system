@@ -278,18 +278,44 @@ JAZZMIN_UI_TWEAKS = {
     },
 }
 
-
 REST_FRAMEWORK = {
     "NON_FIELD_ERRORS_KEY": "errors",
+
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
+
     "DEFAULT_FILTER_BACKENDS": [
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
+
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
     "PAGE_SIZE": 10,
+
+    "DEFAULT_THROTTLE_CLASSES": [
+        "ecommerce_api.core.throttles.ComboRateThrottle", 
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+
+    "DEFAULT_THROTTLE_RATES": {
+    "combo": "10/minute",
+    "users_admin": "10/minute",
+    "users_me": "10/minute",
+    "profiles": "10/minute",
+    "categories_admin": "5/minute",
+    "products_admin": "5/minute",
+    "checkout": "2/minute",
+    "paystack_webhook": "20/minute",
+    "reviews": "5/minute",
+    "shipping_addresses": "5/minute",
+    "shipment_details": "5/minute",
+    "shipment_status_updates": "2/minute",
+    "shipment_label_creation": "1/minute",
+    }
 }

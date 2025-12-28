@@ -5,23 +5,22 @@ from rest_framework import filters, generics, permissions, status
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db.models import Avg
+from rest_framework.throttling import ScopedRateThrottle
+from ecommerce_api.core.throttles import ComboRateThrottle
 
 from .filters import ProductFilter
 from .models import Category, Product
 from .permissions import IsAdminOrVendor
 from .serializers import CategorySerializer, ProductSerializer
 from .services.recommendations import get_similar_products
-from django.db.models import Avg
+
 
 # ---------------------- CATEGORY VIEWS ----------------------
 
-
 class PublicCategoryListAPIView(APIView):
-    """
-    Public: list all categories
-    """
-
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ComboRateThrottle]
 
     @swagger_auto_schema(
         operation_summary="List all categories (public)",
@@ -35,11 +34,8 @@ class PublicCategoryListAPIView(APIView):
 
 
 class PublicCategoryDetailAPIView(APIView):
-    """
-    Public: retrieve category by slug
-    """
-
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ComboRateThrottle]
 
     @swagger_auto_schema(
         operation_summary="Get category details (public)",
@@ -53,11 +49,9 @@ class PublicCategoryDetailAPIView(APIView):
 
 
 class CategoryListCreateAPIView(APIView):
-    """
-    Admin/Vendor: list or create categories (internal)
-    """
-
     permission_classes = [IsAdminOrVendor]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "categories_admin"
 
     @swagger_auto_schema(
         operation_summary="List categories (admin/vendor)",
@@ -84,11 +78,9 @@ class CategoryListCreateAPIView(APIView):
 
 
 class CategoryDetailAPIView(APIView):
-    """
-    Admin/Vendor: retrieve/update/delete category via UUID (internal)
-    """
-
     permission_classes = [IsAdminOrVendor]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "categories_admin"
 
     def get_object(self, id):
         return get_object_or_404(Category, id=id)
@@ -133,19 +125,10 @@ class CategoryDetailAPIView(APIView):
 
 # ---------------------- PRODUCT VIEWS ----------------------
 
-
 class PublicProductListAPIView(generics.ListAPIView):
-    """
-    Public endpoint:
-    List all active products with filter, search, and ordering support.
-    Example:
-        /api/public/products/?category=clothing
-        /api/public/products/?search=iphone
-        /api/public/products/?ordering=-price
-    """
-
     serializer_class = ProductSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ComboRateThrottle]
 
     filter_backends = [
         DjangoFilterBackend,
@@ -160,21 +143,10 @@ class PublicProductListAPIView(generics.ListAPIView):
     def get_queryset(self):
         return Product.objects.filter(is_active=True)
 
-    @swagger_auto_schema(
-        operation_summary="List products (public)",
-        operation_description="Anyone can view available products.",
-        responses={200: ProductSerializer(many=True)},
-    )
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
 
 class PublicProductDetailAPIView(APIView):
-    """
-    Public: retrieve product by slug
-    """
-
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ComboRateThrottle]
 
     @swagger_auto_schema(
         operation_summary="Get product details (public)",
@@ -188,11 +160,9 @@ class PublicProductDetailAPIView(APIView):
 
 
 class ProductListCreateAPIView(APIView):
-    """
-    Admin/Vendor: list or create products (internal)
-    """
-
     permission_classes = [IsAdminOrVendor]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "products_admin"
 
     @swagger_auto_schema(
         operation_summary="List products (admin/vendor)",
@@ -219,11 +189,9 @@ class ProductListCreateAPIView(APIView):
 
 
 class ProductDetailAPIView(APIView):
-    """
-    Admin/Vendor: retrieve/update/delete product via UUID (internal)
-    """
-
     permission_classes = [IsAdminOrVendor]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "products_admin"
 
     def get_object(self, id):
         return get_object_or_404(Product, id=id)
@@ -265,22 +233,26 @@ class ProductDetailAPIView(APIView):
         product.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+
 # ----------------- Homepage Top Recommendations -----------------
+
 class HomepageRecommendationListView(generics.ListAPIView):
     serializer_class = ProductSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ComboRateThrottle]
 
     def get_queryset(self):
-        # Evaluate queryset per request
         return Product.objects.filter(is_active=True).annotate(
             avg_rating=Avg("reviews__rating")
         ).order_by("-avg_rating", "-created_at")[:6]
 
 
 # ----------------- Product-Specific Recommendations -----------------
+
 class ProductRecommendationListView(generics.ListAPIView):
     serializer_class = ProductSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_classes = [ComboRateThrottle]
 
     def get_queryset(self):
         product_id = self.kwargs.get("id")

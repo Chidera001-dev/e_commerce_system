@@ -1,4 +1,5 @@
-from django.shortcuts import render
+from rest_framework.throttling import ScopedRateThrottle
+from ecommerce_api.core.throttles import ComboRateThrottle
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 
@@ -10,6 +11,7 @@ from .permissions import IsOwnerOrAdminDeleteOnly
 class ReviewListCreateView(generics.ListCreateAPIView):
     serializer_class = ReviewSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
+    throttle_classes = [ComboRateThrottle]  
 
     def get_queryset(self):
         product_id = self.request.query_params.get("product")
@@ -34,6 +36,8 @@ class ReviewDetailView(generics.RetrieveUpdateDestroyAPIView):
         IsAuthenticatedOrReadOnly,
         IsOwnerOrAdminDeleteOnly,
     ]
+    throttle_classes = [ScopedRateThrottle]  
+    throttle_scope = "reviews"  
 
     def get_queryset(self):
         if self.request.user.is_staff:
